@@ -80,7 +80,11 @@ export default function CreateEventDialog({
       return;
     }
     if (!calendarUrl) {
-      setError("Pick a calendar");
+      setError(
+        calendars.length === 0
+          ? "No calendars found on your server — nothing to create this event in."
+          : "Pick a calendar"
+      );
       return;
     }
     setSaving(true);

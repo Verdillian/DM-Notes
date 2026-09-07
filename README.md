@@ -12,8 +12,9 @@ A self-hosted, chat-style note-taking app. Capture notes the way you'd send your
 - **Checklists** — `- [ ] task` renders as a clickable checkbox.
 - **Images** — attach via the composer or paste a screenshot directly.
 - **Pinning** — star a note to surface it in a pinned strip at the top of its thread.
-- **Accounts** — email/password auth, sessions via httpOnly cookies, passwords hashed with scrypt.
+- **Accounts** — email/password auth, sessions via httpOnly cookies, passwords hashed with scrypt. The first account is an admin and can open/close registration to others, and reset any user's password.
 - **Export/Import** — full JSON backup and restore from Settings.
+- **Calendar (CalDAV)** — connect a CalDAV server (Baikal, Nextcloud, iCloud-compatible servers, etc.) in Settings to see, create, edit, and delete events in a month view alongside your notes. Reads each calendar's real color, expands recurring events properly, and supports daily/weekly/monthly/yearly recurrence when creating or editing.
 
 ## Getting started
 
@@ -28,7 +29,13 @@ Data is stored locally in a SQLite database and an uploads folder under `./data`
 
 ## Stack
 
-Next.js (App Router) + TypeScript + Tailwind CSS, `better-sqlite3` for storage, `marked` + `highlight.js` for rendering.
+Next.js (App Router) + TypeScript + Tailwind CSS, `better-sqlite3` for storage, `marked` + `highlight.js` for rendering, `node-ical` + `fast-xml-parser` for CalDAV.
+
+## Known limitations
+
+- CalDAV credentials are stored in the SQLite database as plaintext, not encrypted at rest. Fine for a single-user self-hosted instance where the database file itself is the trust boundary; if you deploy this more broadly, add encryption before storing them.
+- Editing or deleting a recurring event affects the whole series — there's no per-occurrence override yet.
+- No password-reset email flow; an admin can reset any user's password from Settings instead.
 
 ---
 

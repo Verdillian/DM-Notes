@@ -425,6 +425,9 @@ export function createWelcomeThread(userId: string): Thread {
     "Forget any of this? Tap the (?) icon next to the search bar any time for a quick formatting reference."
   );
   add(
+    "Have a CalDAV calendar? Connect it in Settings to see your events — and create, edit, or delete them — right alongside your notes."
+  );
+  add(
     'Your account, password, and backup (export/import) live in Settings, linked from the sidebar. Delete this thread whenever you\'re done with it — your real notes belong in "General" or wherever you like.'
   );
 
