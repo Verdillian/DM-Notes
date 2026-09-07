@@ -27,6 +27,9 @@
 # local data
 /data
 
+# local Claude Code session artifacts
+/.claude
+
 # debug
 npm-debug.log*
 yarn-debug.log*
