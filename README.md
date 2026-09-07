@@ -27,6 +27,19 @@ Open [http://localhost:3000](http://localhost:3000), register an account, and yo
 
 Data is stored locally in a SQLite database and an uploads folder under `./data`, which is gitignored.
 
+## Backups
+
+`npm run backup` snapshots the database (a safe copy of the live file, not a raw `cp`) and uploaded images into one `.tar.gz`, then pushes it over FTP to remote storage — so you don't lose everything if the machine running this dies.
+
+1. Copy `.env.example` to `.env` and fill in `BACKUP_FTP_HOST`, `BACKUP_FTP_USER`, `BACKUP_FTP_PASSWORD` (any FTP-accessible storage works — e.g. space on a shared web hosting plan you already pay for).
+2. Run `npm run backup` once to confirm it connects and uploads successfully.
+3. Schedule it, e.g. nightly via cron:
+   ```
+   0 3 * * * cd /path/to/dm-notes && npm run backup >> backup.log 2>&1
+   ```
+
+Old backups are pruned automatically, keeping the most recent 14 by default (`BACKUP_KEEP_LAST`). If your FTP host supports FTPS, set `BACKUP_FTP_SECURE=true` so credentials and data aren't sent in the clear.
+
 ## Stack
 
 Next.js (App Router) + TypeScript + Tailwind CSS, `better-sqlite3` for storage, `marked` + `highlight.js` for rendering, `node-ical` + `fast-xml-parser` for CalDAV.
