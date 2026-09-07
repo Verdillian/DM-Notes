@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Settings } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Settings } from "lucide-react";
 
 type CalendarEvent = {
   uid: string;
@@ -15,26 +15,38 @@ type CalendarEvent = {
   description?: string;
 };
 
-function dayLabel(date: Date): string {
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  if (date.toDateString() === today.toDateString()) return "Today";
-  if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
-  return date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, n: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + n, 1);
+}
+
+function startOfGrid(monthStart: Date): Date {
+  const d = new Date(monthStart);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
 }
 
 function timeLabel(event: CalendarEvent): string {
   if (event.allDay) return "All day";
-  const start = new Date(event.start);
-  const end = new Date(event.end);
   const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${fmt(start)} – ${fmt(end)}`;
+  return `${fmt(new Date(event.start))} – ${fmt(new Date(event.end))}`;
 }
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const GRID_DAYS = 42; // 6 weeks, always enough to cover any month
 
 export default function CalendarPage() {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState(() => new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,15 +54,42 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetch("/api/auth/me")
-      .then((r) => (r.ok ? r : Promise.reject()))
-      .then(() => {
-        setCheckingAuth(false);
-        return fetch("/api/caldav/events");
-      })
-      .then(async (r) => {
+      .then((r) => (r.ok ? undefined : Promise.reject()))
+      .then(() => setCheckingAuth(false))
+      .catch(() => router.push("/login"));
+  }, [router]);
+
+  const gridStart = useMemo(() => startOfGrid(monthStart), [monthStart]);
+  const gridDays = useMemo(
+    () =>
+      Array.from({ length: GRID_DAYS }, (_, i) => {
+        const d = new Date(gridStart);
+        d.setDate(d.getDate() + i);
+        return d;
+      }),
+    [gridStart]
+  );
+  const gridEnd = gridDays[gridDays.length - 1];
+
+  useEffect(() => {
+    if (checkingAuth) return;
+    let cancelled = false;
+
+    async function loadEvents() {
+      setLoading(true);
+      setError(null);
+      setNotConnected(false);
+      const start = gridStart.toISOString();
+      const end = new Date(gridEnd.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      try {
+        const r = await fetch(
+          `/api/caldav/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+        );
+        if (cancelled) return;
         if (!r.ok) {
           const data = await r.json().catch(() => ({}));
-          if (r.status === 400) {
+          if (cancelled) return;
+          if (r.status === 400 && data.error === "No calendar connected yet") {
             setNotConnected(true);
           } else {
             setError(data.error ?? "Couldn't load your calendar.");
@@ -58,19 +97,36 @@ export default function CalendarPage() {
           return;
         }
         const data: CalendarEvent[] = await r.json();
-        setEvents(data);
-      })
-      .catch(() => router.push("/login"))
-      .finally(() => setLoading(false));
-  }, [router]);
+        if (!cancelled) setEvents(data);
+      } catch {
+        if (!cancelled) {
+          setError("Couldn't reach the server — check your connection and try again.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  const grouped = events.reduce<Map<string, CalendarEvent[]>>((map, event) => {
-    const key = new Date(event.start).toDateString();
-    const list = map.get(key) ?? [];
-    list.push(event);
-    map.set(key, list);
+    loadEvents();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkingAuth, gridStart.getTime(), gridEnd.getTime()]);
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const event of events) {
+      const key = new Date(event.start).toDateString();
+      const list = map.get(key) ?? [];
+      list.push(event);
+      map.set(key, list);
+    }
     return map;
-  }, new Map());
+  }, [events]);
+
+  const today = new Date();
+  const selectedEvents = eventsByDay.get(selectedDay.toDateString()) ?? [];
 
   if (checkingAuth) {
     return (
@@ -100,10 +156,8 @@ export default function CalendarPage() {
         </Link>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6">
-        {loading && <p className="text-sm text-neutral-400 text-center mt-8">Loading…</p>}
-
-        {!loading && notConnected && (
+      <main className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        {notConnected && (
           <div className="text-center mt-8 space-y-3">
             <p className="text-sm text-neutral-500">No calendar connected yet.</p>
             <Link
@@ -115,43 +169,117 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {!loading && error && (
+        {!notConnected && error && (
           <p className="text-sm text-red-500 text-center mt-8">{error}</p>
         )}
 
-        {!loading && !notConnected && !error && events.length === 0 && (
-          <p className="text-sm text-neutral-400 text-center mt-8">
-            Nothing on the calendar in the next couple of months.
-          </p>
-        )}
-
-        {!loading && !notConnected && !error && events.length > 0 && (
-          <div className="space-y-6">
-            {[...grouped.entries()].map(([dayKey, dayEvents]) => (
-              <div key={dayKey}>
-                <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">
-                  {dayLabel(new Date(dayKey))}
+        {!notConnected && !error && (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setMonthStart((m) => addMonths(m, -1))}
+                className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-semibold">
+                  {monthStart.toLocaleDateString([], { month: "long", year: "numeric" })}
                 </h2>
-                <div className="space-y-2">
-                  {dayEvents.map((event) => (
-                    <div
-                      key={event.uid}
-                      className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
-                    >
-                      <p className="text-sm font-medium">{event.summary}</p>
-                      <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
-                      {event.location && (
-                        <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
-                          <MapPin size={11} />
-                          {event.location}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <button
+                  onClick={() => {
+                    setMonthStart(startOfMonth(new Date()));
+                    setSelectedDay(new Date());
+                  }}
+                  className="text-xs text-brand-600 hover:underline"
+                >
+                  Today
+                </button>
               </div>
-            ))}
-          </div>
+              <button
+                onClick={() => setMonthStart((m) => addMonths(m, 1))}
+                className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                aria-label="Next month"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-neutral-400 mb-1">
+              {WEEKDAYS.map((d) => (
+                <div key={d}>{d}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {gridDays.map((day) => {
+                const inMonth = day.getMonth() === monthStart.getMonth();
+                const isToday = sameDay(day, today);
+                const isSelected = sameDay(day, selectedDay);
+                const dayEvents = eventsByDay.get(day.toDateString()) ?? [];
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => setSelectedDay(day)}
+                    className={`aspect-square rounded-lg flex flex-col items-center justify-start pt-1.5 gap-1 text-sm ${
+                      isSelected
+                        ? "bg-brand-600 text-white"
+                        : isToday
+                          ? "bg-brand-100 dark:bg-brand-900"
+                          : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                    } ${!inMonth && !isSelected ? "text-neutral-300 dark:text-neutral-700" : ""}`}
+                  >
+                    <span>{day.getDate()}</span>
+                    {dayEvents.length > 0 && (
+                      <span className="flex gap-0.5">
+                        {dayEvents.slice(0, 3).map((e) => (
+                          <span
+                            key={e.uid}
+                            className={`h-1 w-1 rounded-full ${
+                              isSelected ? "bg-white" : "bg-brand-500"
+                            }`}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 space-y-2">
+              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+                {sameDay(selectedDay, today)
+                  ? "Today"
+                  : selectedDay.toLocaleDateString([], {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+              </h3>
+              {loading && <p className="text-sm text-neutral-400">Loading…</p>}
+              {!loading && selectedEvents.length === 0 && (
+                <p className="text-sm text-neutral-400">Nothing on the calendar.</p>
+              )}
+              {!loading &&
+                selectedEvents.map((event) => (
+                  <div
+                    key={event.uid}
+                    className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
+                  >
+                    <p className="text-sm font-medium">{event.summary}</p>
+                    <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
+                    {event.location && (
+                      <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
+                        <MapPin size={11} />
+                        {event.location}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </>
         )}
       </main>
     </div>

@@ -465,6 +465,10 @@ export default function SettingsPage() {
                 <input
                   type="text"
                   required
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={caldavUsername}
                   onChange={(e) => setCaldavUsername(e.target.value)}
                   className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -475,6 +479,10 @@ export default function SettingsPage() {
                 <input
                   type="password"
                   required={!caldavConnected}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  autoComplete="new-password"
+                  spellCheck={false}
                   value={caldavPassword}
                   onChange={(e) => setCaldavPassword(e.target.value)}
                   placeholder={caldavConnected ? "Leave blank to keep current" : ""}
