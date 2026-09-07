@@ -1,7 +1,10 @@
-// Nightly backup: safely snapshots the SQLite database + uploaded images,
+// Automated backup: safely snapshots the SQLite database + uploaded images,
 // packs them into one archive, and pushes it to remote storage over FTP.
 // Run manually with `npm run backup`, or on a schedule via cron:
 //   0 3 * * * cd /path/to/dm-notes && npm run backup >> backup.log 2>&1
+//
+// For a one-off backup you upload yourself (no FTP config needed), use
+// `npm run backup:manual` instead — see scripts/backup-local.mjs.
 //
 // Required environment variables (put them in a .env file and run with
 // `node --env-file=.env scripts/backup.mjs`, or export them in your shell):
@@ -14,16 +17,11 @@
 //   BACKUP_FTP_DIR       remote directory to store backups in, default "/dm-notes-backups"
 //   BACKUP_KEEP_LAST     how many recent backups to retain remotely, default 14
 
-import Database from "better-sqlite3";
-import { create as createTar } from "tar";
 import { Client as FtpClient } from "basic-ftp";
 import path from "path";
 import fs from "fs";
 import os from "os";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "notes.db");
-const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+import { createBackupArchive } from "./lib/createBackupArchive.mjs";
 
 const FTP_HOST = process.env.BACKUP_FTP_HOST;
 const FTP_USER = process.env.BACKUP_FTP_USER;
@@ -44,33 +42,11 @@ async function main() {
     );
     process.exit(1);
   }
-  if (!fs.existsSync(DB_PATH)) {
-    console.error(`No database found at ${DB_PATH} — nothing to back up.`);
-    process.exit(1);
-  }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dm-notes-backup-"));
-
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "dm-notes-backup-out-"));
   try {
-    log("Snapshotting database (safe copy of a live, in-use SQLite file)...");
-    const dbBackupPath = path.join(tmpDir, "notes.db");
-    const db = new Database(DB_PATH, { readonly: true });
-    await db.backup(dbBackupPath);
-    db.close();
-
-    log("Staging files for archive...");
-    const entries = ["notes.db"];
-    if (fs.existsSync(UPLOADS_DIR)) {
-      fs.cpSync(UPLOADS_DIR, path.join(tmpDir, "uploads"), { recursive: true });
-      entries.push("uploads");
-    }
-
-    const archiveName = `dm-notes-backup-${timestamp}.tar.gz`;
-    const archivePath = path.join(tmpDir, archiveName);
-    await createTar({ gzip: true, file: archivePath, cwd: tmpDir }, entries);
-
-    const sizeMb = (fs.statSync(archivePath).size / 1024 / 1024).toFixed(2);
+    log("Creating backup archive (safe database snapshot + uploads)...");
+    const { archivePath, archiveName, sizeMb } = await createBackupArchive(outDir);
     log(`Archive ready: ${archiveName} (${sizeMb} MB)`);
 
     const client = new FtpClient();
@@ -104,7 +80,7 @@ async function main() {
 
     log("Backup complete.");
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 }
 

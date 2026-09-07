@@ -26,6 +26,7 @@
 
 # local data
 /data
+/backups
 
 # local Claude Code session artifacts
 /.claude

@@ -40,6 +40,8 @@ Data is stored locally in a SQLite database and an uploads folder under `./data`
 
 Old backups are pruned automatically, keeping the most recent 14 by default (`BACKUP_KEEP_LAST`). If your FTP host supports FTPS, set `BACKUP_FTP_SECURE=true` so credentials and data aren't sent in the clear.
 
+**`npm run backup:manual`** does the same safe snapshot but just saves the `.tar.gz` to a local `./backups` folder — no FTP setup needed. Use it for an on-demand backup you upload yourself, wherever you like.
+
 ## Stack
 
 Next.js (App Router) + TypeScript + Tailwind CSS, `better-sqlite3` for storage, `marked` + `highlight.js` for rendering, `node-ical` + `fast-xml-parser` for CalDAV.
