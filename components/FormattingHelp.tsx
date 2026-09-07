@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { X } from "lucide-react";
 
 type Entry = { label: string; syntax: string };
@@ -22,6 +23,14 @@ const ENTRIES: Entry[] = [
 ];
 
 export default function FormattingHelp({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}

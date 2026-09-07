@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 export type EditableEvent = {
@@ -61,6 +61,14 @@ export default function EditEventDialog({
   const [recurrence, setRecurrence] = useState<(typeof RECURRENCE_OPTIONS)[number]["value"]>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   async function handleSave() {
     if (!summary.trim()) {

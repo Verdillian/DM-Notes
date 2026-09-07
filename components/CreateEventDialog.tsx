@@ -53,6 +53,14 @@ export default function CreateEventDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     fetch("/api/caldav/calendars")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data: Calendar[]) => {

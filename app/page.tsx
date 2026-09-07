@@ -16,6 +16,8 @@ import {
   Image as ImageIcon,
   HelpCircle,
   Calendar as CalendarIcon,
+  Pencil,
+  FolderInput,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
@@ -70,6 +72,9 @@ export default function Home() {
 
   const [addingThread, setAddingThread] = useState(false);
   const [newThreadName, setNewThreadName] = useState("");
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [movingNoteId, setMovingNoteId] = useState<string | null>(null);
 
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -231,7 +236,10 @@ export default function Home() {
     }
   }
 
-  async function patchNote(id: string, updates: Partial<Pick<Note, "content" | "starred">>) {
+  async function patchNote(
+    id: string,
+    updates: Partial<Pick<Note, "content" | "starred" | "threadId">>
+  ) {
     try {
       const res = await fetch(`/api/notes/${id}`, {
         method: "PATCH",
@@ -280,6 +288,30 @@ export default function Home() {
       setActiveThreadId(thread.id);
       setNewThreadName("");
       setAddingThread(false);
+    } catch {
+      showError(CONNECTION_ERROR);
+    }
+  }
+
+  function startRenameThread(t: Thread) {
+    setRenamingThreadId(t.id);
+    setRenameValue(t.name);
+  }
+
+  async function submitRenameThread(id: string) {
+    const name = renameValue.trim();
+    setRenamingThreadId(null);
+    const current = threadsById.get(id);
+    if (!name || !current || name === current.name) return;
+    try {
+      const res = await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = await res.json();
+      setThreads((prev) => prev.map((t) => (t.id === id ? updated : t)));
     } catch {
       showError(CONNECTION_ERROR);
     }
@@ -506,6 +538,23 @@ export default function Home() {
         <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
           {threads.map((t) => {
             const count = notes.filter((n) => n.threadId === t.id).length;
+            if (renamingThreadId === t.id) {
+              return (
+                <input
+                  key={t.id}
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitRenameThread(t.id);
+                    if (e.key === "Escape") setRenamingThreadId(null);
+                  }}
+                  onBlur={() => submitRenameThread(t.id)}
+                  className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-brand-400 bg-white dark:bg-neutral-900 focus:outline-none"
+                />
+              );
+            }
             return (
               <div
                 key={t.id}
@@ -517,10 +566,18 @@ export default function Home() {
               >
                 <button
                   onClick={() => selectThread(t.id)}
+                  onDoubleClick={() => startRenameThread(t)}
                   className="flex-1 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
                 >
                   {t.name}
                   <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
+                </button>
+                <button
+                  onClick={() => startRenameThread(t)}
+                  className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  title="Rename thread"
+                >
+                  <Pencil size={13} />
                 </button>
                 {threads.length > 1 && (
                   <button
@@ -701,7 +758,14 @@ export default function Home() {
                 <span className="text-[11px] text-neutral-400">
                   {formatTime(note.createdAt)}
                 </span>
-                <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-2">
+                <div className="relative flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-2">
+                  <button
+                    onClick={() => setMovingNoteId(movingNoteId === note.id ? null : note.id)}
+                    className="p-2.5 text-neutral-300 hover:text-brand-600"
+                    title="Move to thread"
+                  >
+                    <FolderInput size={15} />
+                  </button>
                   <button
                     onClick={() => patchNote(note.id, { starred: !note.starred })}
                     className={
@@ -720,6 +784,36 @@ export default function Home() {
                   >
                     <X size={15} />
                   </button>
+
+                  {movingNoteId === note.id && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setMovingNoteId(null)}
+                      />
+                      <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
+                        {threads
+                          .filter((t) => t.id !== note.threadId)
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => {
+                                patchNote(note.id, { threadId: t.id });
+                                setMovingNoteId(null);
+                              }}
+                              className="block w-full text-left px-3 py-2 text-sm truncate hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            >
+                              {t.name}
+                            </button>
+                          ))}
+                        {threads.length <= 1 && (
+                          <p className="px-3 py-2 text-xs text-neutral-400">
+                            No other threads yet.
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
