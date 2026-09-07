@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, Press_Start_2P } from "next/font/google";
 import "./globals.css";
 
@@ -23,6 +23,16 @@ const pressStart = Press_Start_2P({
 export const metadata: Metadata = {
   title: "DM Notes",
   description: "A self-hosted, chat-style note capture app",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "DM Notes",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1c6b43",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
