@@ -39,6 +39,11 @@ db.exec(`
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 function hasColumn(table: string, column: string): boolean {
@@ -56,8 +61,22 @@ if (!hasColumn("threads", "user_id")) {
   // user to register so existing notes aren't lost when accounts were added.
   db.exec(`ALTER TABLE threads ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
 }
+if (!hasColumn("users", "is_admin")) {
+  db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
+  // accounts created before the admin flag existed have none set — grant it
+  // to whichever account is earliest, so admin access isn't orphaned.
+  const anyAdmin = db.prepare("SELECT id FROM users WHERE is_admin = 1").get();
+  if (!anyAdmin) {
+    const earliest = db
+      .prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
+      .get() as { id: string } | undefined;
+    if (earliest) {
+      db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(earliest.id);
+    }
+  }
+}
 
-export type User = { id: string; email: string; createdAt: number };
+export type User = { id: string; email: string; isAdmin: boolean; createdAt: number };
 type UserWithHash = User & { passwordHash: string };
 
 export type Note = {
@@ -96,6 +115,7 @@ type UserRow = {
   id: string;
   email: string;
   password_hash: string;
+  is_admin: number;
   created_at: number;
 };
 
@@ -119,6 +139,7 @@ function rowToUser(row: UserRow): UserWithHash {
     id: row.id,
     email: row.email,
     passwordHash: row.password_hash,
+    isAdmin: !!row.is_admin,
     createdAt: row.created_at,
   };
 }
@@ -131,7 +152,11 @@ export function createUser(email: string, passwordHash: string): User {
   db.prepare(
     "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, email, passwordHash, now);
-  return { id, email, createdAt: now };
+  return { id, email, isAdmin: false, createdAt: now };
+}
+
+export function setUserAdmin(id: string, isAdmin: boolean) {
+  db.prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(isAdmin ? 1 : 0, id);
 }
 
 export function getUserByEmail(email: string): UserWithHash | null {
@@ -154,7 +179,7 @@ export function updateUserEmail(id: string, email: string): User | null {
     | undefined;
   if (!existing) return null;
   db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, id);
-  return { id, email, createdAt: existing.created_at };
+  return { id, email, isAdmin: !!existing.is_admin, createdAt: existing.created_at };
 }
 
 export function updateUserPassword(id: string, passwordHash: string): boolean {
@@ -169,7 +194,7 @@ export function getUserById(id: string): User | null {
     | UserRow
     | undefined;
   if (!row) return null;
-  return { id: row.id, email: row.email, createdAt: row.created_at };
+  return { id: row.id, email: row.email, isAdmin: !!row.is_admin, createdAt: row.created_at };
 }
 
 export function countUsers(): number {
@@ -379,6 +404,9 @@ export function createWelcomeThread(userId: string): Thread {
   );
   add("The search bar up top looks across every thread at once, not just this one.");
   add(
+    "Forget any of this? Tap the (?) icon next to the search bar any time for a quick formatting reference."
+  );
+  add(
     'Your account, password, and backup (export/import) live in Settings, linked from the sidebar. Delete this thread whenever you\'re done with it — your real notes belong in "General" or wherever you like.'
   );
 
@@ -397,6 +425,25 @@ export function importNote(
     "INSERT INTO notes (id, content, starred, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
   ).run(id, content, starred ? 1 : 0, threadId, createdAt, updatedAt);
   return { id, content, starred, threadId, createdAt, updatedAt };
+}
+
+// ---- app settings ----
+
+export function getSetting(key: string, defaultValue: string): string {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row ? row.value : defaultValue;
+}
+
+export function setSetting(key: string, value: string) {
+  db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(key, value);
+}
+
+export function isRegistrationOpen(): boolean {
+  return getSetting("registration_open", "true") === "true";
 }
 
 export default db;

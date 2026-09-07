@@ -8,10 +8,29 @@ import {
   createThread,
   createWelcomeThread,
   listThreads,
+  setUserAdmin,
+  isRegistrationOpen,
 } from "@/lib/db";
 import { hashPassword, SESSION_COOKIE } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`register:${ip}`, 5, 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many attempts. Try again later." },
+      { status: 429 }
+    );
+  }
+
+  const isFirstUser = countUsers() === 0;
+  if (!isFirstUser && !isRegistrationOpen()) {
+    return NextResponse.json(
+      { error: "Registration is currently closed. Ask the admin for access." },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
@@ -34,8 +53,9 @@ export async function POST(req: NextRequest) {
 
   const user = createUser(email, hashPassword(password));
 
-  // the very first account inherits any pre-accounts threads/notes
-  if (countUsers() === 1) {
+  if (isFirstUser) {
+    setUserAdmin(user.id, true);
+    // the very first account inherits any pre-accounts threads/notes
     claimOrphanThreads(user.id);
   }
   createWelcomeThread(user.id);
@@ -45,7 +65,10 @@ export async function POST(req: NextRequest) {
   }
 
   const session = createSession(user.id);
-  const res = NextResponse.json({ id: user.id, email: user.email }, { status: 201 });
+  const res = NextResponse.json(
+    { id: user.id, email: user.email, isAdmin: isFirstUser },
+    { status: 201 }
+  );
   res.cookies.set(SESSION_COOKIE, session.token, {
     httpOnly: true,
     sameSite: "lax",

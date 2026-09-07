@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Token, Tokens } from "marked";
 import hljs from "highlight.js";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, X } from "lucide-react";
 import { parseTokens, toggleTaskItem, type TagToken, type WikilinkToken } from "@/lib/markdown";
 
 type Props = {
@@ -51,7 +51,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
         <span>{lang || "text"}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 hover:text-white"
+          className="flex items-center gap-1 p-1.5 -m-1.5 hover:text-white"
           title="Copy code"
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -90,6 +90,16 @@ function Heading({ depth, children }: { depth: number; children: ReactNode }) {
 export default function Markdown({ content, onTagClick, onLinkClick, onChangeContent }: Props) {
   const tokens = useMemo(() => parseTokens(content), [content]);
   const occCounts = new Map<string, number>();
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxSrc(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxSrc]);
 
   function nextOccurrence(raw: string): number {
     const n = occCounts.get(raw) ?? 0;
@@ -136,7 +146,8 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
               src={img.href}
               alt={img.text}
               title={img.title ?? undefined}
-              className="max-h-80 rounded-lg my-1 block"
+              onClick={() => setLightboxSrc(img.href)}
+              className="max-h-80 rounded-lg my-1 block cursor-zoom-in"
             />
           );
         }
@@ -148,7 +159,7 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
               href={link.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sky-600 dark:text-sky-400 underline"
+              className="text-brand-600 dark:text-brand-400 underline"
             >
               {renderInline(link.tokens, `${key}-`) || link.text}
             </a>
@@ -160,7 +171,7 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
             <button
               key={key}
               onClick={() => onTagClick(t.value.toLowerCase())}
-              className="text-sky-600 dark:text-sky-400 hover:underline font-medium"
+              className="text-brand-600 dark:text-brand-400 hover:underline font-medium"
             >
               #{t.value}
             </button>
@@ -287,7 +298,7 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
                       onChange={() =>
                         onChangeContent?.(toggleTaskItem(content, raw, occ))
                       }
-                      className="mt-1 accent-sky-600"
+                      className="mt-1 accent-brand-600"
                     />
                     <span
                       className={
@@ -317,5 +328,32 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
     }
   }
 
-  return <div className="space-y-1 text-sm leading-relaxed">{tokens.map((t, i) => renderBlock(t, i))}</div>;
+  return (
+    <>
+      <div className="space-y-1 text-sm leading-relaxed">
+        {tokens.map((t, i) => renderBlock(t, i))}
+      </div>
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 cursor-zoom-out"
+        >
+          <button
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-3 right-3 p-2.5 text-white/70 hover:text-white"
+            aria-label="Close"
+          >
+            <X size={22} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-full rounded-lg cursor-default"
+          />
+        </div>
+      )}
+    </>
+  );
 }

@@ -6,10 +6,19 @@ import {
   updateUserPassword,
 } from "@/lib/db";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function PATCH(req: NextRequest) {
   const user = getCurrentUser(req);
   if (!user) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`account:${user.id}:${ip}`, 10, 15 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many attempts. Try again in a few minutes." },
+      { status: 429 }
+    );
+  }
 
   const body = await req.json();
   const currentPassword =
@@ -50,5 +59,9 @@ export async function PATCH(req: NextRequest) {
     updateUserPassword(user.id, hashPassword(newPassword));
   }
 
-  return NextResponse.json({ id: user.id, email: newEmail || user.email });
+  return NextResponse.json({
+    id: user.id,
+    email: newEmail || user.email,
+    isAdmin: user.isAdmin,
+  });
 }

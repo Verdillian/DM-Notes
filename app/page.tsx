@@ -14,8 +14,11 @@ import {
   Send,
   Search,
   Image as ImageIcon,
+  HelpCircle,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
+import FormattingHelp from "@/components/FormattingHelp";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { extractTags, toPlainText } from "@/lib/markdown";
 
 function snippet(content: string, maxLen = 60): string {
@@ -56,6 +59,8 @@ export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +74,16 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  function requestConfirm(message: string, onConfirm: () => void) {
+    setConfirmState({ message, onConfirm });
+  }
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const [linkQuery, setLinkQuery] = useState<{
@@ -84,30 +99,46 @@ export default function Home() {
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => {
-        if (!r.ok) {
+    let cancelled = false;
+
+    async function loadApp() {
+      setLoadError(null);
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (cancelled) return;
+        if (!meRes.ok) {
           router.push("/login");
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then((me: CurrentUser | null) => {
-        if (!me) return;
+        const me: CurrentUser = await meRes.json();
+        if (cancelled) return;
         setUser(me);
         setCheckingAuth(false);
-        Promise.all([
-          fetch("/api/threads").then((r) => r.json()),
-          fetch("/api/notes").then((r) => r.json()),
-        ]).then(([threadsData, notesData]: [Thread[], Note[]]) => {
-          setThreads(threadsData);
-          setNotes(notesData);
-          if (threadsData.length > 0) setActiveThreadId(threadsData[0].id);
-          setLoading(false);
-        });
-      });
+
+        const [threadsRes, notesRes] = await Promise.all([
+          fetch("/api/threads"),
+          fetch("/api/notes"),
+        ]);
+        if (cancelled) return;
+        if (!threadsRes.ok || !notesRes.ok) throw new Error();
+        const threadsData: Thread[] = await threadsRes.json();
+        const notesData: Note[] = await notesRes.json();
+        if (cancelled) return;
+        setThreads(threadsData);
+        setNotes(notesData);
+        if (threadsData.length > 0) setActiveThreadId(threadsData[0].id);
+        setLoading(false);
+      } catch {
+        if (!cancelled) setLoadError(CONNECTION_ERROR);
+      }
+    }
+
+    loadApp();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadKey]);
 
   const isSearching = search.trim().length > 0;
 
@@ -160,33 +191,74 @@ export default function Home() {
     }
   }, [currentThreadNotes.length, activeThreadId, isSearching]);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  function showError(message: string) {
+    setToast(message);
+  }
+
+  const CONNECTION_ERROR = "Couldn't reach the server — check your connection and try again.";
+
   async function submitNote() {
     const content = draft.trim();
     if (!content || !activeThreadId) return;
     setDraft("");
     setLinkQuery(null);
-    const res = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, threadId: activeThreadId }),
-    });
-    const note = await res.json();
-    setNotes((prev) => [...prev, note]);
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, threadId: activeThreadId }),
+      });
+      if (!res.ok) throw new Error();
+      const note = await res.json();
+      setNotes((prev) => [...prev, note]);
+    } catch {
+      setDraft(content);
+      showError(CONNECTION_ERROR);
+    }
   }
 
   async function patchNote(id: string, updates: Partial<Pick<Note, "content" | "starred">>) {
-    const res = await fetch(`/api/notes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    const updated = await res.json();
-    setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    try {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error();
+      const updated = await res.json();
+      setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    } catch {
+      showError(CONNECTION_ERROR);
+    }
   }
 
-  async function removeNote(id: string) {
+  function removeNote(id: string) {
+    requestConfirm("Delete this note? This can't be undone.", () => confirmRemoveNote(id));
+  }
+
+  async function confirmRemoveNote(id: string) {
+    const previous = notes;
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    await fetch(`/api/notes/${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/notes/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      setNotes(previous);
+      showError(CONNECTION_ERROR);
+    }
   }
 
   async function createThread() {
@@ -195,29 +267,43 @@ export default function Home() {
       setAddingThread(false);
       return;
     }
-    const res = await fetch("/api/threads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const thread = await res.json();
-    setThreads((prev) => [...prev, thread]);
-    setActiveThreadId(thread.id);
-    setNewThreadName("");
-    setAddingThread(false);
+    try {
+      const res = await fetch("/api/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error();
+      const thread = await res.json();
+      setThreads((prev) => [...prev, thread]);
+      setActiveThreadId(thread.id);
+      setNewThreadName("");
+      setAddingThread(false);
+    } catch {
+      showError(CONNECTION_ERROR);
+    }
   }
 
-  async function deleteThread(id: string) {
+  function deleteThread(id: string) {
     if (threads.length <= 1) return;
     const thread = threadsById.get(id);
-    if (!confirm(`Delete "${thread?.name}" and all its notes? This can't be undone.`))
-      return;
-    const res = await fetch(`/api/threads/${id}`, { method: "DELETE" });
-    if (!res.ok) return;
-    const remaining = threads.filter((t) => t.id !== id);
-    setThreads(remaining);
-    setNotes((prev) => prev.filter((n) => n.threadId !== id));
-    if (activeThreadId === id) setActiveThreadId(remaining[0]?.id ?? null);
+    requestConfirm(
+      `Delete "${thread?.name}" and all its notes? This can't be undone.`,
+      () => confirmDeleteThread(id)
+    );
+  }
+
+  async function confirmDeleteThread(id: string) {
+    try {
+      const res = await fetch(`/api/threads/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      const remaining = threads.filter((t) => t.id !== id);
+      setThreads(remaining);
+      setNotes((prev) => prev.filter((n) => n.threadId !== id));
+      if (activeThreadId === id) setActiveThreadId(remaining[0]?.id ?? null);
+    } catch {
+      showError(CONNECTION_ERROR);
+    }
   }
 
   function selectThread(id: string) {
@@ -252,11 +338,14 @@ export default function Home() {
       const res = await fetch("/api/uploads", { method: "POST", body: form });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Upload failed");
+        showError(data.error ?? "Upload failed");
         return null;
       }
       const data = await res.json();
       return data.url as string;
+    } catch {
+      showError(CONNECTION_ERROR);
+      return null;
     } finally {
       setUploading(false);
     }
@@ -367,6 +456,20 @@ export default function Home() {
 
   const activeThread = activeThreadId ? threadsById.get(activeThreadId) : undefined;
 
+  if (loadError) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-neutral-50 dark:bg-neutral-950 px-4">
+        <p className="text-sm text-neutral-500 text-center">{loadError}</p>
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (checkingAuth || !user) {
     return (
       <div className="flex h-dvh items-center justify-center bg-neutral-50 dark:bg-neutral-950">
@@ -393,7 +496,7 @@ export default function Home() {
           <span className="text-sm font-semibold text-neutral-500">Threads</span>
           <button
             onClick={() => setAddingThread(true)}
-            className="p-1 rounded-md text-neutral-400 hover:text-sky-600 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            className="p-2 -m-1 rounded-md text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-900"
             title="New thread"
           >
             <Plus size={18} />
@@ -407,7 +510,7 @@ export default function Home() {
                 key={t.id}
                 className={`group flex items-center rounded-lg ${
                   activeThreadId === t.id && !isSearching
-                    ? "bg-sky-100 dark:bg-sky-900"
+                    ? "bg-brand-100 dark:bg-brand-900"
                     : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
                 }`}
               >
@@ -421,7 +524,7 @@ export default function Home() {
                 {threads.length > 1 && (
                   <button
                     onClick={() => deleteThread(t.id)}
-                    className="pr-2 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                    className="p-2.5 -m-1 mr-1 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                     title="Delete thread"
                   >
                     <X size={14} />
@@ -444,7 +547,7 @@ export default function Home() {
               }}
               onBlur={createThread}
               placeholder="Thread name…"
-              className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-sky-400 bg-white dark:bg-neutral-900 focus:outline-none"
+              className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-brand-400 bg-white dark:bg-neutral-900 focus:outline-none"
             />
           )}
         </div>
@@ -479,20 +582,32 @@ export default function Home() {
               {isSearching ? "Search results" : activeThread?.name ?? "Notes"}
             </h1>
           </div>
-          <div className="relative">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
-            />
-            <input
-              type="text"
-              placeholder="Search all threads…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 pl-8 pr-3 py-1.5 text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 sm:flex-initial">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
+              />
+              <input
+                type="text"
+                placeholder="Search all threads…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 pl-8 pr-3 py-1.5 text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+              title="Formatting quick reference"
+              aria-label="Formatting quick reference"
+            >
+              <HelpCircle size={18} />
+            </button>
           </div>
         </header>
+
+        {helpOpen && <FormattingHelp onClose={() => setHelpOpen(false)} />}
 
         {scopedTags.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800">
@@ -502,7 +617,7 @@ export default function Home() {
                 onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
                 className={`text-xs rounded-full px-2.5 py-1 border ${
                   activeTag === tag
-                    ? "bg-sky-600 text-white border-sky-600"
+                    ? "bg-brand-600 text-white border-brand-600"
                     : "border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
                 }`}
               >
@@ -516,7 +631,7 @@ export default function Home() {
           <div className="border-b border-neutral-200 dark:border-neutral-800">
             <button
               onClick={() => setPinnedOpen((v) => !v)}
-              className="w-full text-left px-3 sm:px-4 py-1.5 text-xs font-medium text-amber-600 flex items-center gap-1"
+              className="w-full text-left px-3 sm:px-4 py-1.5 text-xs font-medium text-gold-600 flex items-center gap-1"
             >
               {pinnedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               <Star size={12} fill="currentColor" />
@@ -528,7 +643,7 @@ export default function Home() {
                   <button
                     key={n.id}
                     onClick={() => jumpToNote(n.id)}
-                    className="block w-full text-left text-xs truncate text-neutral-500 hover:text-sky-600"
+                    className="block w-full text-left text-xs truncate text-neutral-500 hover:text-brand-600"
                   >
                     {snippet(n.content, 90)}
                   </button>
@@ -557,12 +672,12 @@ export default function Home() {
               }}
               className={`group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border px-4 py-2.5 transition-colors ${
                 highlightedId === note.id
-                  ? "border-sky-500 bg-sky-50 dark:bg-sky-950"
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                   : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
               }`}
             >
               {isSearching && (
-                <div className="mb-1 text-[11px] text-sky-600">
+                <div className="mb-1 text-[11px] text-brand-600">
                   {threadsById.get(note.threadId)?.name ?? "?"}
                 </div>
               )}
@@ -578,13 +693,13 @@ export default function Home() {
                 <span className="text-[11px] text-neutral-400">
                   {formatTime(note.createdAt)}
                 </span>
-                <div className="flex items-center gap-2.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-2">
                   <button
                     onClick={() => patchNote(note.id, { starred: !note.starred })}
                     className={
                       note.starred
-                        ? "text-amber-500"
-                        : "text-neutral-300 hover:text-amber-500"
+                        ? "p-2.5 text-gold-500"
+                        : "p-2.5 text-neutral-300 hover:text-gold-500"
                     }
                     title="Pin"
                   >
@@ -592,7 +707,7 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => removeNote(note.id)}
-                    className="text-neutral-300 hover:text-red-500"
+                    className="p-2.5 text-neutral-300 hover:text-red-500"
                     title="Delete"
                   >
                     <X size={15} />
@@ -613,7 +728,7 @@ export default function Home() {
                   onClick={() => selectLinkSuggestion(n)}
                   className={`block w-full text-left px-3 py-2 text-sm truncate ${
                     i === linkSelIndex
-                      ? "bg-sky-100 dark:bg-sky-900"
+                      ? "bg-brand-100 dark:bg-brand-900"
                       : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
                   }`}
                 >
@@ -648,12 +763,12 @@ export default function Home() {
               onPaste={handlePaste}
               placeholder='Write a note… **bold**, `code`, #tag, [[link]], - [ ] todo'
               rows={1}
-              className="flex-1 resize-none rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 max-h-40"
+              className="flex-1 resize-none overflow-y-auto rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-[50dvh]"
             />
             <button
               onClick={submitNote}
               disabled={!draft.trim()}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-sky-600 text-white px-3.5 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-40"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 text-white px-3.5 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={16} />
@@ -662,6 +777,24 @@ export default function Home() {
           </div>
         </footer>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] rounded-lg bg-neutral-900 dark:bg-neutral-100 text-neutral-50 dark:text-neutral-900 text-sm px-4 py-2.5 shadow-lg text-center">
+          {toast}
+        </div>
+      )}
+
+      {confirmState && (
+        <ConfirmDialog
+          message={confirmState.message}
+          onCancel={() => setConfirmState(null)}
+          onConfirm={() => {
+            const { onConfirm } = confirmState;
+            setConfirmState(null);
+            onConfirm();
+          }}
+        />
+      )}
     </div>
   );
 }

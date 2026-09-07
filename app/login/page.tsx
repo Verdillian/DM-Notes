@@ -15,19 +15,24 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Login failed");
-      return;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Login failed");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch {
+      setError("Network error — check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/");
-    router.refresh();
   }
 
   return (
@@ -37,7 +42,7 @@ export default function LoginPage() {
         className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-4"
       >
         <div>
-          <p className="text-xs font-semibold tracking-wide text-sky-600 uppercase">DM Notes</p>
+          <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
           <h1 className="text-lg font-semibold">Log in</h1>
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -48,7 +53,7 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
         <div className="space-y-1">
@@ -58,19 +63,19 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-md bg-sky-600 text-white py-2 text-sm font-medium disabled:opacity-40"
+          className="w-full rounded-md bg-brand-600 text-white py-2 text-sm font-medium disabled:opacity-40"
         >
           {loading ? "Logging in…" : "Log in"}
         </button>
         <p className="text-sm text-neutral-500 text-center">
           No account?{" "}
-          <Link href="/register" className="text-sky-600 hover:underline">
+          <Link href="/register" className="text-brand-600 hover:underline">
             Register
           </Link>
         </p>
