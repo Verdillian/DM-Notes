@@ -41,6 +41,7 @@ export default function SettingsPage() {
   const [caldavUrl, setCaldavUrl] = useState("");
   const [caldavUsername, setCaldavUsername] = useState("");
   const [caldavPassword, setCaldavPassword] = useState("");
+  const [caldavCalendars, setCaldavCalendars] = useState<string[]>([]);
   const [caldavSaving, setCaldavSaving] = useState(false);
   const [caldavError, setCaldavError] = useState<string | null>(null);
   const [caldavSuccess, setCaldavSuccess] = useState<string | null>(null);
@@ -59,13 +60,23 @@ export default function SettingsPage() {
     if (!user) return;
     fetch("/api/caldav/connection")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { connected: boolean; url?: string; username?: string }) => {
-        setCaldavConnected(data.connected);
-        if (data.connected) {
-          setCaldavUrl(data.url ?? "");
-          setCaldavUsername(data.username ?? "");
+      .then(
+        (data: {
+          connected: boolean;
+          url?: string;
+          username?: string;
+          calendars?: string[];
+          discoveryError?: string | null;
+        }) => {
+          setCaldavConnected(data.connected);
+          if (data.connected) {
+            setCaldavUrl(data.url ?? "");
+            setCaldavUsername(data.username ?? "");
+            setCaldavCalendars(data.calendars ?? []);
+            if (data.discoveryError) setCaldavError(data.discoveryError);
+          }
         }
-      })
+      )
       .catch(() => setCaldavConnected(false));
   }, [user]);
 
@@ -87,11 +98,9 @@ export default function SettingsPage() {
       }
       setCaldavConnected(true);
       setCaldavPassword("");
-      setCaldavSuccess(
-        data.calendarCount === 1
-          ? "Connected — found 1 calendar."
-          : `Connected — found ${data.calendarCount} calendars.`
-      );
+      setCaldavCalendars(data.calendars ?? []);
+      const count = (data.calendars ?? []).length;
+      setCaldavSuccess(count === 1 ? "Connected — found 1 calendar." : `Connected — found ${count} calendars.`);
     } catch {
       setCaldavError("Network error — check your connection and try again.");
     } finally {
@@ -108,6 +117,7 @@ export default function SettingsPage() {
       setCaldavUrl("");
       setCaldavUsername("");
       setCaldavPassword("");
+      setCaldavCalendars([]);
       setCaldavSuccess(null);
     } catch {
       setCaldavError("Network error — check your connection and try again.");
@@ -441,11 +451,21 @@ export default function SettingsPage() {
           {caldavError && <p className="text-sm text-red-500">{caldavError}</p>}
           {caldavSuccess && <p className="text-sm text-brand-600">{caldavSuccess}</p>}
           {caldavConnected && (
-            <p className="text-sm text-neutral-500">
-              Connected to{" "}
-              <span className="font-medium text-neutral-700 dark:text-neutral-300">{caldavUrl}</span>{" "}
-              as {caldavUsername}.
-            </p>
+            <div className="text-sm text-neutral-500 space-y-1">
+              <p>
+                Connected to{" "}
+                <span className="font-medium text-neutral-700 dark:text-neutral-300">{caldavUrl}</span>{" "}
+                as {caldavUsername}.
+              </p>
+              {caldavCalendars.length > 0 && (
+                <p>
+                  Calendars found:{" "}
+                  <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                    {caldavCalendars.join(", ")}
+                  </span>
+                </p>
+              )}
+            </div>
           )}
           <form onSubmit={handleCaldavConnect} className="space-y-3">
             <div className="space-y-1">

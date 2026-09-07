@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Settings } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Pencil, Settings } from "lucide-react";
+import EditEventDialog from "@/components/EditEventDialog";
 
 type CalendarEvent = {
   uid: string;
+  href: string;
   summary: string;
   start: string;
   end: string;
@@ -51,6 +53,8 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -112,7 +116,7 @@ export default function CalendarPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkingAuth, gridStart.getTime(), gridEnd.getTime()]);
+  }, [checkingAuth, gridStart.getTime(), gridEnd.getTime(), reloadToken]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -266,22 +270,42 @@ export default function CalendarPage() {
                 selectedEvents.map((event) => (
                   <div
                     key={event.uid}
-                    className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
+                    className="group flex items-start justify-between gap-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
                   >
-                    <p className="text-sm font-medium">{event.summary}</p>
-                    <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
-                    {event.location && (
-                      <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
-                        <MapPin size={11} />
-                        {event.location}
-                      </p>
-                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{event.summary}</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
+                      {event.location && (
+                        <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
+                          <MapPin size={11} />
+                          {event.location}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setEditingEvent(event)}
+                      className="p-2 -m-1 shrink-0 text-neutral-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-brand-600"
+                      aria-label="Edit event"
+                    >
+                      <Pencil size={14} />
+                    </button>
                   </div>
                 ))}
             </div>
           </>
         )}
       </main>
+
+      {editingEvent && (
+        <EditEventDialog
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSaved={() => {
+            setEditingEvent(null);
+            setReloadToken((t) => t + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

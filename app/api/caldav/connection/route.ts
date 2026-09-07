@@ -10,7 +10,22 @@ export async function GET(req: NextRequest) {
 
   const conn = getCaldavConnection(user.id);
   if (!conn) return NextResponse.json({ connected: false });
-  return NextResponse.json({ connected: true, url: conn.url, username: conn.username });
+
+  let calendars: { url: string; name: string }[] = [];
+  let discoveryError: string | null = null;
+  try {
+    calendars = await discoverCalendars(conn);
+  } catch (err) {
+    discoveryError = err instanceof Error ? err.message : "Couldn't list calendars.";
+  }
+
+  return NextResponse.json({
+    connected: true,
+    url: conn.url,
+    username: conn.username,
+    calendars: calendars.map((c) => c.name),
+    discoveryError,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -39,17 +54,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That doesn't look like a valid URL" }, { status: 400 });
   }
 
-  let calendarCount = 0;
+  let calendars: { url: string; name: string }[] = [];
   try {
-    const calendars = await discoverCalendars({ url, username, password });
-    calendarCount = calendars.length;
+    calendars = await discoverCalendars({ url, username, password });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't connect to that server.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
   setCaldavConnection(user.id, { url, username, password });
-  return NextResponse.json({ connected: true, url, username, calendarCount });
+  return NextResponse.json({
+    connected: true,
+    url,
+    username,
+    calendars: calendars.map((c) => c.name),
+  });
 }
 
 export async function DELETE(req: NextRequest) {

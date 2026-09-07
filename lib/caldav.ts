@@ -1,8 +1,10 @@
 import { XMLParser } from "fast-xml-parser";
-import ical, { type CalendarResponse } from "node-ical";
+import ical, { type CalendarResponse, type VEvent } from "node-ical";
 
 export type CalendarEvent = {
   uid: string;
+  href: string;
+  etag?: string;
   summary: string;
   start: string;
   end: string;
@@ -23,20 +25,21 @@ async function davRequest(
   url: string,
   method: string,
   creds: CaldavCreds,
-  body: string,
-  depth: string
-): Promise<{ status: number; text: string }> {
-  const res = await fetch(url, {
-    method,
-    headers: {
-      Authorization: authHeader(creds.username, creds.password),
-      "Content-Type": "application/xml; charset=utf-8",
-      Depth: depth,
-    },
-    body,
-  });
+  body: string | undefined,
+  depth: string | undefined,
+  extraHeaders?: Record<string, string>
+): Promise<{ status: number; text: string; etag: string | null }> {
+  const headers: Record<string, string> = {
+    Authorization: authHeader(creds.username, creds.password),
+    ...extraHeaders,
+  };
+  if (depth !== undefined) headers.Depth = depth;
+  if (body !== undefined && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/xml; charset=utf-8";
+  }
+  const res = await fetch(url, { method, headers, body });
   const text = await res.text();
-  return { status: res.status, text };
+  return { status: res.status, text, etag: res.headers.get("etag") };
 }
 
 /** Recursively collects every value for a given (namespace-stripped) tag name. */
@@ -160,6 +163,23 @@ export async function discoverCalendars(creds: CaldavCreds): Promise<DiscoveredC
   return calendars;
 }
 
+function parseVEventFromIcs(ics: string): { item: VEvent; startDate: Date; endDate: Date } | null {
+  let parsed: CalendarResponse;
+  try {
+    parsed = ical.sync.parseICS(ics);
+  } catch {
+    return null;
+  }
+  for (const item of Object.values(parsed)) {
+    if (!item || item.type !== "VEVENT") continue;
+    const startDate = item.start ? new Date(item.start) : null;
+    if (!startDate) continue;
+    const endDate = item.end ? new Date(item.end) : startDate;
+    return { item, startDate, endDate };
+  }
+  return null;
+}
+
 async function fetchEventsFromCalendar(
   calendarUrl: string,
   creds: CaldavCreds,
@@ -175,33 +195,30 @@ async function fetchEventsFromCalendar(
   );
   if (res.status >= 400) return [];
   const xml = xmlParser.parse(res.text);
-  const blocks = findAll(xml, "calendar-data")
-    .map(textOf)
-    .filter((s): s is string => !!s);
+  const responses = findAll(xml, "response");
 
   const events: CalendarEvent[] = [];
-  for (const ics of blocks) {
-    let parsed: CalendarResponse;
-    try {
-      parsed = ical.sync.parseICS(ics);
-    } catch {
-      continue;
-    }
-    for (const item of Object.values(parsed)) {
-      if (!item || item.type !== "VEVENT") continue;
-      const startDate = item.start ? new Date(item.start) : null;
-      if (!startDate) continue;
-      const endDate = item.end ? new Date(item.end) : startDate;
-      events.push({
-        uid: item.uid ?? `${calendarUrl}-${startDate.toISOString()}`,
-        summary: unwrapValue(item.summary) || "(untitled event)",
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-        allDay: item.datetype === "date",
-        location: unwrapValue(item.location),
-        description: unwrapValue(item.description),
-      });
-    }
+  for (const r of responses) {
+    const href = textOf(findAll(r, "href")[0]);
+    const etag = textOf(findAll(r, "getetag")[0]);
+    const ics = textOf(findAll(r, "calendar-data")[0]);
+    if (!href || !ics) continue;
+
+    const parsed = parseVEventFromIcs(ics);
+    if (!parsed) continue;
+    const { item, startDate, endDate } = parsed;
+
+    events.push({
+      uid: item.uid ?? href,
+      href: resolveUrl(calendarUrl, href),
+      etag: etag ?? undefined,
+      summary: unwrapValue(item.summary) || "(untitled event)",
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      allDay: item.datetype === "date",
+      location: unwrapValue(item.location),
+      description: unwrapValue(item.description),
+    });
   }
   return events;
 }
@@ -221,4 +238,102 @@ export async function fetchCalendarEvents(
   const events = results.flat();
   events.sort((a, b) => a.start.localeCompare(b.start));
   return events;
+}
+
+// ---- editing ----
+
+function escapeIcsText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function formatIcsDate(date: Date, allDay: boolean): string {
+  if (allDay) {
+    return date.toISOString().slice(0, 10).replace(/-/g, "");
+  }
+  return date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+}
+
+export type EventEdits = {
+  summary?: string;
+  location?: string;
+  start?: Date;
+  end?: Date;
+  allDay: boolean;
+};
+
+/**
+ * Applies a small set of edits to a raw VEVENT's iCalendar text via surgical
+ * line replacement, leaving every other property (RRULE, VALARM, ATTENDEE,
+ * etc.) untouched — safer than regenerating the event from scratch.
+ */
+export function applyEventEdits(rawIcs: string, edits: EventEdits): string {
+  const lines = rawIcs.split(/\r\n|\n/);
+  let inVevent = false;
+
+  const replaced = lines.map((line) => {
+    if (/^BEGIN:VEVENT/.test(line)) inVevent = true;
+    if (/^END:VEVENT/.test(line)) inVevent = false;
+    if (!inVevent) return line;
+
+    if (edits.summary !== undefined && /^SUMMARY[:;]/.test(line)) {
+      return `SUMMARY:${escapeIcsText(edits.summary)}`;
+    }
+    if (edits.location !== undefined && /^LOCATION[:;]/.test(line)) {
+      return `LOCATION:${escapeIcsText(edits.location)}`;
+    }
+    if (edits.start && /^DTSTART[:;]/.test(line)) {
+      return edits.allDay
+        ? `DTSTART;VALUE=DATE:${formatIcsDate(edits.start, true)}`
+        : `DTSTART:${formatIcsDate(edits.start, false)}`;
+    }
+    if (edits.end && /^DTEND[:;]/.test(line)) {
+      return edits.allDay
+        ? `DTEND;VALUE=DATE:${formatIcsDate(edits.end, true)}`
+        : `DTEND:${formatIcsDate(edits.end, false)}`;
+    }
+    return line;
+  });
+
+  // if the original event had no LOCATION line at all but one was requested, add it
+  if (edits.location !== undefined && !replaced.some((l) => /^LOCATION[:;]/.test(l))) {
+    const endIdx = replaced.findIndex((l) => /^END:VEVENT/.test(l));
+    if (endIdx !== -1) {
+      replaced.splice(endIdx, 0, `LOCATION:${escapeIcsText(edits.location)}`);
+    }
+  }
+
+  return replaced.join("\r\n");
+}
+
+export async function fetchEventRaw(
+  href: string,
+  creds: CaldavCreds
+): Promise<{ raw: string; etag: string | null }> {
+  const res = await davRequest(href, "GET", creds, undefined, undefined);
+  if (res.status >= 400) {
+    throw new Error(`Couldn't load that event (server returned ${res.status}).`);
+  }
+  return { raw: res.text, etag: res.etag };
+}
+
+export async function saveEvent(
+  href: string,
+  creds: CaldavCreds,
+  etag: string | undefined,
+  rawIcs: string
+): Promise<void> {
+  const res = await davRequest(href, "PUT", creds, rawIcs, undefined, {
+    "Content-Type": "text/calendar; charset=utf-8",
+    ...(etag ? { "If-Match": etag } : {}),
+  });
+  if (res.status === 412) {
+    throw new Error("This event changed on the server since you loaded it — refresh and try again.");
+  }
+  if (res.status >= 400) {
+    throw new Error(`Couldn't save the event (server returned ${res.status}).`);
+  }
 }
