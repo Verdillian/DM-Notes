@@ -3,19 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Pencil, Settings } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Pencil, Settings, Trash2 } from "lucide-react";
 import EditEventDialog from "@/components/EditEventDialog";
 import CreateEventDialog from "@/components/CreateEventDialog";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type CalendarEvent = {
   uid: string;
   href: string;
+  etag?: string;
   calendarName: string;
   calendarColor?: string;
   summary: string;
   start: string;
   end: string;
   allDay: boolean;
+  isRecurring: boolean;
   location?: string;
   description?: string;
 };
@@ -61,7 +64,27 @@ export default function CalendarPage() {
   const [notConnected, setNotConnected] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [creatingEvent, setCreatingEvent] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState<CalendarEvent | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  async function handleDeleteEvent() {
+    if (!deletingEvent) return;
+    const params = new URLSearchParams({ href: deletingEvent.href });
+    if (deletingEvent.etag) params.set("etag", deletingEvent.etag);
+    try {
+      const res = await fetch(`/api/caldav/events?${params.toString()}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDeleteError(data.error ?? "Couldn't delete that event.");
+        return;
+      }
+      setDeletingEvent(null);
+      setReloadToken((t) => t + 1);
+    } catch {
+      setDeleteError("Network error — check your connection and try again.");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -283,6 +306,7 @@ export default function CalendarPage() {
             </div>
 
             <div className="mt-6 space-y-2">
+              {deleteError && <p className="text-sm text-red-500">{deleteError}</p>}
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
                   {sameDay(selectedDay, today)
@@ -329,13 +353,25 @@ export default function CalendarPage() {
                         </p>
                       )}
                     </div>
-                    <button
-                      onClick={() => setEditingEvent(event)}
-                      className="p-2 -m-1 shrink-0 text-neutral-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-brand-600"
-                      aria-label="Edit event"
-                    >
-                      <Pencil size={14} />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                      <button
+                        onClick={() => setEditingEvent(event)}
+                        className="p-2 -m-1 text-neutral-300 hover:text-brand-600"
+                        aria-label="Edit event"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteError(null);
+                          setDeletingEvent(event);
+                        }}
+                        className="p-2 -m-1 text-neutral-300 hover:text-red-500"
+                        aria-label="Delete event"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
             </div>
@@ -362,6 +398,14 @@ export default function CalendarPage() {
             setCreatingEvent(false);
             setReloadToken((t) => t + 1);
           }}
+        />
+      )}
+
+      {deletingEvent && (
+        <ConfirmDialog
+          message={`Delete "${deletingEvent.summary}"? ${deletingEvent.isRecurring ? "This removes the whole recurring series, not just this occurrence. " : ""}This can't be undone.`}
+          onCancel={() => setDeletingEvent(null)}
+          onConfirm={handleDeleteEvent}
         />
       )}
     </div>

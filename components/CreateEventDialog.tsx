@@ -39,6 +39,7 @@ export default function CreateEventDialog({
   const [summary, setSummary] = useState("");
   const [location, setLocation] = useState("");
   const [allDay, setAllDay] = useState(false);
+  const [recurrence, setRecurrence] = useState<"" | "daily" | "weekly" | "monthly" | "yearly">("");
 
   const initialStart = new Date(defaultDay);
   initialStart.setHours(initialStart.getHours() + 1, 0, 0, 0);
@@ -95,6 +96,7 @@ export default function CreateEventDialog({
           start: fromInputValue(startValue, allDay),
           end: fromInputValue(endValue, allDay),
           allDay,
+          recurrence: recurrence || undefined,
         }),
       });
       if (!res.ok) {
@@ -163,15 +165,28 @@ export default function CreateEventDialog({
             </div>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-neutral-500">
-            <input
-              type="checkbox"
-              checked={allDay}
-              onChange={(e) => handleAllDayToggle(e.target.checked)}
-              className="accent-brand-600"
-            />
-            All day
-          </label>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm text-neutral-500">
+              <input
+                type="checkbox"
+                checked={allDay}
+                onChange={(e) => handleAllDayToggle(e.target.checked)}
+                className="accent-brand-600"
+              />
+              All day
+            </label>
+            <select
+              value={recurrence}
+              onChange={(e) => setRecurrence(e.target.value as typeof recurrence)}
+              className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="">Doesn&apos;t repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">

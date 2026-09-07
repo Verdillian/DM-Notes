@@ -12,6 +12,7 @@ export type CalendarEvent = {
   start: string;
   end: string;
   allDay: boolean;
+  isRecurring: boolean;
   location?: string;
   description?: string;
 };
@@ -236,6 +237,7 @@ async function fetchEventsFromCalendar(
           start: inst.start.toISOString(),
           end: inst.end.toISOString(),
           allDay: inst.isFullDay,
+          isRecurring: true,
           location,
           description,
         });
@@ -251,6 +253,7 @@ async function fetchEventsFromCalendar(
         start: startDate.toISOString(),
         end: endDate.toISOString(),
         allDay: item.datetype === "date",
+        isRecurring: false,
         location,
         description,
       });
@@ -299,18 +302,20 @@ export type EventEdits = {
   start?: Date;
   end?: Date;
   allDay: boolean;
+  /** undefined = leave as-is, "none" = remove recurrence, a freq = set/replace it */
+  recurrence?: RecurrenceFreq | "none";
 };
 
 /**
  * Applies a small set of edits to a raw VEVENT's iCalendar text via surgical
- * line replacement, leaving every other property (RRULE, VALARM, ATTENDEE,
- * etc.) untouched — safer than regenerating the event from scratch.
+ * line replacement, leaving every other property (VALARM, ATTENDEE, etc.)
+ * untouched — safer than regenerating the event from scratch.
  */
 export function applyEventEdits(rawIcs: string, edits: EventEdits): string {
   const lines = rawIcs.split(/\r\n|\n/);
   let inVevent = false;
 
-  const replaced = lines.map((line) => {
+  const withNulls = lines.map((line) => {
     if (/^BEGIN:VEVENT/.test(line)) inVevent = true;
     if (/^END:VEVENT/.test(line)) inVevent = false;
     if (!inVevent) return line;
@@ -331,8 +336,24 @@ export function applyEventEdits(rawIcs: string, edits: EventEdits): string {
         ? `DTEND;VALUE=DATE:${formatIcsDate(edits.end, true)}`
         : `DTEND:${formatIcsDate(edits.end, false)}`;
     }
+    if (edits.recurrence !== undefined && /^RRULE[:;]/.test(line)) {
+      return edits.recurrence === "none" ? null : `RRULE:${rruleForFrequency(edits.recurrence)}`;
+    }
     return line;
   });
+  const replaced: string[] = withNulls.filter((l): l is string => l !== null);
+
+  // if there was no RRULE line to replace but one was requested, add it
+  if (
+    edits.recurrence !== undefined &&
+    edits.recurrence !== "none" &&
+    !replaced.some((l) => /^RRULE[:;]/.test(l))
+  ) {
+    const endIdx = replaced.findIndex((l) => /^END:VEVENT/.test(l));
+    if (endIdx !== -1) {
+      replaced.splice(endIdx, 0, `RRULE:${rruleForFrequency(edits.recurrence)}`);
+    }
+  }
 
   // if the original event had no LOCATION line at all but one was requested, add it
   if (edits.location !== undefined && !replaced.some((l) => /^LOCATION[:;]/.test(l))) {
@@ -374,12 +395,19 @@ export async function saveEvent(
   }
 }
 
+export type RecurrenceFreq = "daily" | "weekly" | "monthly" | "yearly";
+
+export function rruleForFrequency(freq: RecurrenceFreq): string {
+  return `FREQ=${freq.toUpperCase()}`;
+}
+
 export type NewEventFields = {
   summary: string;
   location?: string;
   start: Date;
   end: Date;
   allDay: boolean;
+  recurrence?: RecurrenceFreq;
 };
 
 export async function createEvent(
@@ -404,6 +432,7 @@ export async function createEvent(
       : `DTEND:${formatIcsDate(fields.end, false)}`,
     `SUMMARY:${escapeIcsText(fields.summary)}`,
   ];
+  if (fields.recurrence) lines.push(`RRULE:${rruleForFrequency(fields.recurrence)}`);
   if (fields.location) lines.push(`LOCATION:${escapeIcsText(fields.location)}`);
   lines.push("END:VEVENT", "END:VCALENDAR");
   const ics = lines.join("\r\n");
@@ -419,4 +448,20 @@ export async function createEvent(
     throw new Error(`Couldn't create the event (server returned ${res.status}).`);
   }
   return href;
+}
+
+export async function deleteEvent(
+  href: string,
+  creds: CaldavCreds,
+  etag?: string
+): Promise<void> {
+  const res = await davRequest(href, "DELETE", creds, undefined, undefined, {
+    ...(etag ? { "If-Match": etag } : {}),
+  });
+  if (res.status === 412) {
+    throw new Error("This event changed on the server since you loaded it — refresh and try again.");
+  }
+  if (res.status >= 400 && res.status !== 404) {
+    throw new Error(`Couldn't delete the event (server returned ${res.status}).`);
+  }
 }

@@ -9,8 +9,18 @@ export type EditableEvent = {
   start: string;
   end: string;
   allDay: boolean;
+  isRecurring: boolean;
   location?: string;
 };
+
+const RECURRENCE_OPTIONS = [
+  { value: "", label: "No change" },
+  { value: "none", label: "Doesn't repeat" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+] as const;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -48,6 +58,7 @@ export default function EditEventDialog({
   const [endValue, setEndValue] = useState(
     event.allDay ? toDateInput(event.end) : toDateTimeInput(event.end)
   );
+  const [recurrence, setRecurrence] = useState<(typeof RECURRENCE_OPTIONS)[number]["value"]>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +80,7 @@ export default function EditEventDialog({
           start: fromInputValue(startValue, event.allDay),
           end: fromInputValue(endValue, event.allDay),
           allDay: event.allDay,
+          recurrence: recurrence || undefined,
         }),
       });
       if (!res.ok) {
@@ -106,6 +118,11 @@ export default function EditEventDialog({
 
         <div className="px-4 py-4 space-y-3">
           {error && <p className="text-sm text-red-500">{error}</p>}
+          {event.isRecurring && (
+            <p className="text-xs text-neutral-400">
+              This is a recurring event — changes here apply to the whole series.
+            </p>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm text-neutral-500">Title</label>
@@ -146,6 +163,21 @@ export default function EditEventDialog({
               onChange={(e) => setLocation(e.target.value)}
               className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm text-neutral-500">Repeat</label>
+            <select
+              value={recurrence}
+              onChange={(e) => setRecurrence(e.target.value as typeof recurrence)}
+              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {RECURRENCE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
