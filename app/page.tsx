@@ -1,69 +1,667 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Plus,
+  X,
+  Star,
+  ChevronDown,
+  ChevronRight,
+  Menu,
+  Settings,
+  Send,
+  Search,
+  Image as ImageIcon,
+} from "lucide-react";
+import Markdown from "@/components/Markdown";
+import { extractTags, toPlainText } from "@/lib/markdown";
+
+function snippet(content: string, maxLen = 60): string {
+  const text = toPlainText(content);
+  return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
+}
+
+type Note = {
+  id: string;
+  content: string;
+  starred: boolean;
+  threadId: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type Thread = {
+  id: string;
+  name: string;
+  createdAt: number;
+};
+
+type CurrentUser = {
+  id: string;
+  email: string;
+};
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return time;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${time}`;
+}
 
 export default function Home() {
+  const router = useRouter();
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [addingThread, setAddingThread] = useState(false);
+  const [newThreadName, setNewThreadName] = useState("");
+
+  const [draft, setDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  const [linkQuery, setLinkQuery] = useState<{
+    start: number;
+    query: string;
+  } | null>(null);
+  const [linkSelIndex, setLinkSelIndex] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => {
+        if (!r.ok) {
+          router.push("/login");
+          return null;
+        }
+        return r.json();
+      })
+      .then((me: CurrentUser | null) => {
+        if (!me) return;
+        setUser(me);
+        setCheckingAuth(false);
+        Promise.all([
+          fetch("/api/threads").then((r) => r.json()),
+          fetch("/api/notes").then((r) => r.json()),
+        ]).then(([threadsData, notesData]: [Thread[], Note[]]) => {
+          setThreads(threadsData);
+          setNotes(notesData);
+          if (threadsData.length > 0) setActiveThreadId(threadsData[0].id);
+          setLoading(false);
+        });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isSearching = search.trim().length > 0;
+
+  const currentThreadNotes = useMemo(
+    () => notes.filter((n) => n.threadId === activeThreadId),
+    [notes, activeThreadId]
+  );
+
+  const scopeNotes = isSearching ? notes : currentThreadNotes;
+
+  const scopedTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of scopeNotes) for (const t of extractTags(n.content)) set.add(t);
+    return [...set].sort();
+  }, [scopeNotes]);
+
+  const filteredNotes = useMemo(() => {
+    return scopeNotes.filter((n) => {
+      if (activeTag && !extractTags(n.content).includes(activeTag)) return false;
+      if (search && !n.content.toLowerCase().includes(search.toLowerCase()))
+        return false;
+      return true;
+    });
+  }, [scopeNotes, search, activeTag]);
+
+  const pinnedNotes = useMemo(
+    () => currentThreadNotes.filter((n) => n.starred),
+    [currentThreadNotes]
+  );
+
+  const threadsById = useMemo(() => {
+    const map = new Map<string, Thread>();
+    for (const t of threads) map.set(t.id, t);
+    return map;
+  }, [threads]);
+
+  const linkSuggestions = useMemo(() => {
+    if (!linkQuery) return [];
+    const q = linkQuery.query.toLowerCase();
+    return notes
+      .filter((n) => n.content.toLowerCase().includes(q))
+      .slice(-50)
+      .reverse()
+      .slice(0, 5);
+  }, [linkQuery, notes]);
+
+  useEffect(() => {
+    if (!isSearching) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    }
+  }, [currentThreadNotes.length, activeThreadId, isSearching]);
+
+  async function submitNote() {
+    const content = draft.trim();
+    if (!content || !activeThreadId) return;
+    setDraft("");
+    setLinkQuery(null);
+    const res = await fetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, threadId: activeThreadId }),
+    });
+    const note = await res.json();
+    setNotes((prev) => [...prev, note]);
+  }
+
+  async function patchNote(id: string, updates: Partial<Pick<Note, "content" | "starred">>) {
+    const res = await fetch(`/api/notes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const updated = await res.json();
+    setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+  }
+
+  async function removeNote(id: string) {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    await fetch(`/api/notes/${id}`, { method: "DELETE" });
+  }
+
+  async function createThread() {
+    const name = newThreadName.trim();
+    if (!name) {
+      setAddingThread(false);
+      return;
+    }
+    const res = await fetch("/api/threads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const thread = await res.json();
+    setThreads((prev) => [...prev, thread]);
+    setActiveThreadId(thread.id);
+    setNewThreadName("");
+    setAddingThread(false);
+  }
+
+  async function deleteThread(id: string) {
+    if (threads.length <= 1) return;
+    const thread = threadsById.get(id);
+    if (!confirm(`Delete "${thread?.name}" and all its notes? This can't be undone.`))
+      return;
+    const res = await fetch(`/api/threads/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    const remaining = threads.filter((t) => t.id !== id);
+    setThreads(remaining);
+    setNotes((prev) => prev.filter((n) => n.threadId !== id));
+    if (activeThreadId === id) setActiveThreadId(remaining[0]?.id ?? null);
+  }
+
+  function selectThread(id: string) {
+    setActiveThreadId(id);
+    setSearch("");
+    setActiveTag(null);
+    setSidebarOpen(false);
+  }
+
+  function insertAtCursor(text: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setDraft((d) => d + text);
+      return;
+    }
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + text + draft.slice(end);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      const pos = start + text.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  async function uploadImage(file: File): Promise<string | null> {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/uploads", { method: "POST", body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? "Upload failed");
+        return null;
+      }
+      const data = await res.json();
+      return data.url as string;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const url = await uploadImage(file);
+    if (url) insertAtCursor(`![](${url}) `);
+  }
+
+  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const item = Array.from(e.clipboardData.items).find((it) =>
+      it.type.startsWith("image/")
+    );
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    const url = await uploadImage(file);
+    if (url) insertAtCursor(`![](${url}) `);
+  }
+
+  function updateLinkQueryFromCaret(value: string, caret: number) {
+    const before = value.slice(0, caret);
+    const start = before.lastIndexOf("[[");
+    if (start === -1) {
+      setLinkQuery(null);
+      return;
+    }
+    const between = before.slice(start + 2);
+    if (between.includes("]]") || between.includes("\n")) {
+      setLinkQuery(null);
+      return;
+    }
+    setLinkQuery({ start, query: between });
+    setLinkSelIndex(0);
+  }
+
+  function handleDraftChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setDraft(value);
+    updateLinkQueryFromCaret(value, e.target.selectionStart ?? value.length);
+  }
+
+  function selectLinkSuggestion(note: Note) {
+    if (!linkQuery || !textareaRef.current) return;
+    const caret = textareaRef.current.selectionStart ?? draft.length;
+    const before = draft.slice(0, linkQuery.start);
+    const after = draft.slice(caret);
+    const label = snippet(note.content, 30);
+    const inserted = `[[${note.id}|${label}]] `;
+    const next = before + inserted + after;
+    setDraft(next);
+    setLinkQuery(null);
+    requestAnimationFrame(() => {
+      const pos = before.length + inserted.length;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(pos, pos);
+    });
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (linkQuery && linkSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setLinkSelIndex((i) => (i + 1) % linkSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setLinkSelIndex(
+          (i) => (i - 1 + linkSuggestions.length) % linkSuggestions.length
+        );
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        selectLinkSuggestion(linkSuggestions[linkSelIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setLinkQuery(null);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submitNote();
+    }
+  }
+
+  function jumpToNote(id: string) {
+    const target = notes.find((n) => n.id === id);
+    if (!target) return;
+    setSearch("");
+    setActiveTag(null);
+    setActiveThreadId(target.threadId);
+    setHighlightedId(id);
+    requestAnimationFrame(() => {
+      noteRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setTimeout(() => setHighlightedId(null), 1800);
+  }
+
+  const activeThread = activeThreadId ? threadsById.get(activeThreadId) : undefined;
+
+  if (checkingAuth || !user) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+        <p className="text-sm text-neutral-400">Loading…</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex h-dvh bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-hidden">
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/30 sm:hidden"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-64 shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 flex flex-col transform transition-transform duration-200 sm:static sm:z-auto sm:w-56 sm:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="px-3 py-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-neutral-500">Threads</span>
+          <button
+            onClick={() => setAddingThread(true)}
+            className="p-1 rounded-md text-neutral-400 hover:text-sky-600 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            title="New thread"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
+          {threads.map((t) => {
+            const count = notes.filter((n) => n.threadId === t.id).length;
+            return (
+              <div
+                key={t.id}
+                className={`group flex items-center rounded-lg ${
+                  activeThreadId === t.id && !isSearching
+                    ? "bg-sky-100 dark:bg-sky-900"
+                    : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                }`}
+              >
+                <button
+                  onClick={() => selectThread(t.id)}
+                  className="flex-1 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
+                >
+                  {t.name}
+                  <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
+                </button>
+                {threads.length > 1 && (
+                  <button
+                    onClick={() => deleteThread(t.id)}
+                    className="pr-2 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                    title="Delete thread"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {addingThread && (
+            <input
+              autoFocus
+              value={newThreadName}
+              onChange={(e) => setNewThreadName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") createThread();
+                if (e.key === "Escape") {
+                  setAddingThread(false);
+                  setNewThreadName("");
+                }
+              }}
+              onBlur={createThread}
+              placeholder="Thread name…"
+              className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-sky-400 bg-white dark:bg-neutral-900 focus:outline-none"
+            />
+          )}
+        </div>
+        <div className="border-t border-neutral-200 dark:border-neutral-800 p-2.5 space-y-1">
+          <p className="px-1.5 pb-1 text-xs text-neutral-400 truncate" title={user.email}>
+            {user.email}
+          </p>
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+          >
+            <Settings size={16} />
+            Settings
+          </Link>
+          <p className="px-1.5 pt-1 text-[11px] text-neutral-300 dark:text-neutral-600">
+            VERDILLIAN © 2026
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="border-b border-neutral-200 dark:border-neutral-800 px-3 sm:px-4 py-2.5 sm:py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="sm:hidden p-1.5 -ml-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+              aria-label="Open threads"
+            >
+              <Menu size={20} />
+            </button>
+            <h1 className="text-lg font-semibold truncate">
+              {isSearching ? "Search results" : activeThread?.name ?? "Notes"}
+            </h1>
+          </div>
+          <div className="relative">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <input
+              type="text"
+              placeholder="Search all threads…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 pl-8 pr-3 py-1.5 text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+        </header>
+
+        {scopedTags.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800">
+            {scopedTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
+                className={`text-xs rounded-full px-2.5 py-1 border ${
+                  activeTag === tag
+                    ? "bg-sky-600 text-white border-sky-600"
+                    : "border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+                }`}
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!isSearching && pinnedNotes.length > 0 && (
+          <div className="border-b border-neutral-200 dark:border-neutral-800">
+            <button
+              onClick={() => setPinnedOpen((v) => !v)}
+              className="w-full text-left px-3 sm:px-4 py-1.5 text-xs font-medium text-amber-600 flex items-center gap-1"
+            >
+              {pinnedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <Star size={12} fill="currentColor" />
+              {pinnedNotes.length} pinned
+            </button>
+            {pinnedOpen && (
+              <div className="px-3 sm:px-4 pb-2 space-y-1">
+                {pinnedNotes.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => jumpToNote(n.id)}
+                    className="block w-full text-left text-xs truncate text-neutral-500 hover:text-sky-600"
+                  >
+                    {snippet(n.content, 90)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <main className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 flex flex-col gap-3">
+          {loading && (
+            <p className="text-sm text-neutral-400 text-center mt-8">Loading…</p>
+          )}
+          {!loading && filteredNotes.length === 0 && (
+            <p className="text-sm text-neutral-400 text-center mt-8">
+              {currentThreadNotes.length === 0 && !isSearching
+                ? "No notes yet — write your first one below."
+                : "Nothing matches your filters."}
+            </p>
+          )}
+          {filteredNotes.map((note) => (
+            <div
+              key={note.id}
+              ref={(el) => {
+                noteRefs.current[note.id] = el;
+              }}
+              className={`group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border px-4 py-2.5 transition-colors ${
+                highlightedId === note.id
+                  ? "border-sky-500 bg-sky-50 dark:bg-sky-950"
+                  : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
+              }`}
+            >
+              {isSearching && (
+                <div className="mb-1 text-[11px] text-sky-600">
+                  {threadsById.get(note.threadId)?.name ?? "?"}
+                </div>
+              )}
+              <Markdown
+                content={note.content}
+                onTagClick={(tag) => setActiveTag(tag)}
+                onLinkClick={jumpToNote}
+                onChangeContent={(newContent) =>
+                  patchNote(note.id, { content: newContent })
+                }
+              />
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[11px] text-neutral-400">
+                  {formatTime(note.createdAt)}
+                </span>
+                <div className="flex items-center gap-2.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => patchNote(note.id, { starred: !note.starred })}
+                    className={
+                      note.starred
+                        ? "text-amber-500"
+                        : "text-neutral-300 hover:text-amber-500"
+                    }
+                    title="Pin"
+                  >
+                    <Star size={15} fill={note.starred ? "currentColor" : "none"} />
+                  </button>
+                  <button
+                    onClick={() => removeNote(note.id)}
+                    className="text-neutral-300 hover:text-red-500"
+                    title="Delete"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </main>
+
+        <footer className="relative border-t border-neutral-200 dark:border-neutral-800 p-2.5 sm:p-3">
+          {linkQuery && linkSuggestions.length > 0 && (
+            <div className="absolute bottom-full left-2.5 right-2.5 sm:left-3 sm:right-3 mb-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
+              {linkSuggestions.map((n, i) => (
+                <button
+                  key={n.id}
+                  onClick={() => selectLinkSuggestion(n)}
+                  className={`block w-full text-left px-3 py-2 text-sm truncate ${
+                    i === linkSelIndex
+                      ? "bg-sky-100 dark:bg-sky-900"
+                      : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  }`}
+                >
+                  {snippet(n.content, 70)}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageFile}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center justify-center rounded-xl border border-neutral-300 dark:border-neutral-700 px-3 py-2.5 sm:py-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-40"
+              title="Attach image"
+              aria-label="Attach image"
+            >
+              <ImageIcon size={16} />
+            </button>
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={handleDraftChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder='Write a note… **bold**, `code`, #tag, [[link]], - [ ] todo'
+              rows={1}
+              className="flex-1 resize-none rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 max-h-40"
+            />
+            <button
+              onClick={submitNote}
+              disabled={!draft.trim()}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-sky-600 text-white px-3.5 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-40"
+              aria-label="Send"
+            >
+              <Send size={16} />
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

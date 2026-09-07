@@ -1,0 +1,159 @@
+import { Marked, type Token, type Tokens } from "marked";
+
+export type TagToken = { type: "tag"; raw: string; value: string };
+export type WikilinkToken = {
+  type: "wikilink";
+  raw: string;
+  noteId: string;
+  label: string;
+};
+
+const marked = new Marked({ gfm: true, breaks: true });
+
+marked.use({
+  extensions: [
+    {
+      name: "tag",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("#");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(src: string) {
+        const match = /^#([a-zA-Z0-9_-]+)/.exec(src);
+        if (match) {
+          return { type: "tag", raw: match[0], value: match[1] } as TagToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      name: "wikilink",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("[[");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(src: string) {
+        const match = /^\[\[([0-9a-fA-F-]{36})\|([^\]]+)\]\]/.exec(src);
+        if (match) {
+          return {
+            type: "wikilink",
+            raw: match[0],
+            noteId: match[1],
+            label: match[2],
+          } as WikilinkToken;
+        }
+        return undefined;
+      },
+    },
+  ],
+});
+
+export function parseTokens(content: string): Token[] {
+  return marked.lexer(content);
+}
+
+const TASK_RE = /^(\s*(?:[-*+])\s\[)( |x|X)(\])/;
+
+export function toggleTaskItem(content: string, raw: string, occurrence: number): string {
+  let fromIndex = 0;
+  let count = 0;
+  for (;;) {
+    const idx = content.indexOf(raw, fromIndex);
+    if (idx === -1) return content;
+    if (count === occurrence) {
+      const flipped = raw.replace(TASK_RE, (_m, pre, box, post) =>
+        `${pre}${box.toLowerCase() === "x" ? " " : "x"}${post}`
+      );
+      return content.slice(0, idx) + flipped + content.slice(idx + raw.length);
+    }
+    fromIndex = idx + raw.length;
+    count++;
+  }
+}
+
+function inlineToPlainText(tokens: Token[] | undefined): string {
+  if (!tokens) return "";
+  return tokens
+    .map((tok) => {
+      switch (tok.type) {
+        case "tag":
+          return `#${(tok as unknown as TagToken).value}`;
+        case "wikilink":
+          return (tok as unknown as WikilinkToken).label;
+        case "image":
+          return (tok as Tokens.Image).text || "";
+        case "codespan":
+          return (tok as Tokens.Codespan).text;
+        case "text": {
+          const t = tok as Tokens.Text;
+          return t.tokens ? inlineToPlainText(t.tokens) : t.text;
+        }
+        case "link":
+        case "strong":
+        case "em":
+        case "del": {
+          const t = tok as Tokens.Link | Tokens.Strong | Tokens.Em | Tokens.Del;
+          return inlineToPlainText(t.tokens);
+        }
+        default:
+          return "";
+      }
+    })
+    .join("");
+}
+
+export function toPlainText(content: string): string {
+  const tokens = parseTokens(content);
+  const parts: string[] = [];
+  for (const tok of tokens) {
+    if (tok.type === "paragraph" || tok.type === "heading") {
+      parts.push(inlineToPlainText((tok as Tokens.Paragraph | Tokens.Heading).tokens));
+    } else if (tok.type === "code") {
+      parts.push((tok as Tokens.Code).text);
+    } else if (tok.type === "list") {
+      for (const item of (tok as Tokens.List).items) {
+        parts.push(inlineToPlainText(item.tokens.filter((t) => t.type !== "checkbox")));
+      }
+    } else if (tok.type === "blockquote") {
+      parts.push(toPlainTextFromTokens((tok as Tokens.Blockquote).tokens));
+    }
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function toPlainTextFromTokens(tokens: Token[]): string {
+  return tokens
+    .map((tok) => {
+      if (tok.type === "paragraph" || tok.type === "heading") {
+        return inlineToPlainText((tok as Tokens.Paragraph | Tokens.Heading).tokens);
+      }
+      return "";
+    })
+    .join(" ");
+}
+
+export function extractTags(content: string): string[] {
+  const tags = new Set<string>();
+  const walk = (tokens: Token[] | undefined) => {
+    if (!tokens) return;
+    for (const tok of tokens) {
+      if (tok.type === "tag") {
+        tags.add((tok as unknown as TagToken).value.toLowerCase());
+      }
+      const withInline = tok as unknown as { tokens?: Token[] };
+      if (withInline.tokens) walk(withInline.tokens);
+      if (tok.type === "list") {
+        for (const item of (tok as Tokens.List).items) walk(item.tokens);
+      }
+      if (tok.type === "table") {
+        const table = tok as Tokens.Table;
+        for (const cell of table.header) walk(cell.tokens);
+        for (const row of table.rows) for (const cell of row) walk(cell.tokens);
+      }
+    }
+  };
+  walk(parseTokens(content));
+  return [...tags];
+}
