@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import ical, { type CalendarResponse, type VEvent } from "node-ical";
+import ical, { type CalendarResponse, type VEvent, type EventInstance } from "node-ical";
 import { randomUUID } from "crypto";
 
 export type CalendarEvent = {
@@ -210,19 +210,45 @@ async function fetchEventsFromCalendar(
     const parsed = parseVEventFromIcs(ics);
     if (!parsed) continue;
     const { item, startDate, endDate } = parsed;
+    const resolvedHref = resolveUrl(calendarUrl, href);
+    const location = unwrapValue(item.location);
+    const description = unwrapValue(item.description);
 
-    events.push({
-      uid: item.uid ?? href,
-      href: resolveUrl(calendarUrl, href),
-      etag: etag ?? undefined,
-      calendarName,
-      summary: unwrapValue(item.summary) || "(untitled event)",
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
-      allDay: item.datetype === "date",
-      location: unwrapValue(item.location),
-      description: unwrapValue(item.description),
-    });
+    if (item.rrule) {
+      let instances: EventInstance[] = [];
+      try {
+        instances = ical.expandRecurringEvent(item, { from: start, to: end });
+      } catch {
+        instances = [];
+      }
+      for (const inst of instances) {
+        events.push({
+          uid: `${item.uid ?? href}-${inst.start.toISOString()}`,
+          href: resolvedHref,
+          etag: etag ?? undefined,
+          calendarName,
+          summary: unwrapValue(inst.summary) || "(untitled event)",
+          start: inst.start.toISOString(),
+          end: inst.end.toISOString(),
+          allDay: inst.isFullDay,
+          location,
+          description,
+        });
+      }
+    } else {
+      events.push({
+        uid: item.uid ?? href,
+        href: resolvedHref,
+        etag: etag ?? undefined,
+        calendarName,
+        summary: unwrapValue(item.summary) || "(untitled event)",
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        allDay: item.datetype === "date",
+        location,
+        description,
+      });
+    }
   }
   return events;
 }
