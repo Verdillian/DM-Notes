@@ -15,6 +15,7 @@ import {
   Search,
   Image as ImageIcon,
   HelpCircle,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
@@ -555,6 +556,13 @@ export default function Home() {
           <p className="px-1.5 pb-1 text-xs text-neutral-400 truncate" title={user.email}>
             {user.email}
           </p>
+          <Link
+            href="/calendar"
+            className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+          >
+            <CalendarIcon size={16} />
+            Calendar
+          </Link>
           <Link
             href="/settings"
             className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"

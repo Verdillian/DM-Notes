@@ -37,6 +37,14 @@ export default function SettingsPage() {
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
 
+  const [caldavConnected, setCaldavConnected] = useState<boolean | null>(null);
+  const [caldavUrl, setCaldavUrl] = useState("");
+  const [caldavUsername, setCaldavUsername] = useState("");
+  const [caldavPassword, setCaldavPassword] = useState("");
+  const [caldavSaving, setCaldavSaving] = useState(false);
+  const [caldavError, setCaldavError] = useState<string | null>(null);
+  const [caldavSuccess, setCaldavSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -46,6 +54,67 @@ export default function SettingsPage() {
       })
       .catch(() => router.push("/login"));
   }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/caldav/connection")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { connected: boolean; url?: string; username?: string }) => {
+        setCaldavConnected(data.connected);
+        if (data.connected) {
+          setCaldavUrl(data.url ?? "");
+          setCaldavUsername(data.username ?? "");
+        }
+      })
+      .catch(() => setCaldavConnected(false));
+  }, [user]);
+
+  async function handleCaldavConnect(e: FormEvent) {
+    e.preventDefault();
+    setCaldavError(null);
+    setCaldavSuccess(null);
+    setCaldavSaving(true);
+    try {
+      const res = await fetch("/api/caldav/connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: caldavUrl, username: caldavUsername, password: caldavPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCaldavError(data.error ?? "Couldn't connect to that calendar.");
+        return;
+      }
+      setCaldavConnected(true);
+      setCaldavPassword("");
+      setCaldavSuccess(
+        data.calendarCount === 1
+          ? "Connected — found 1 calendar."
+          : `Connected — found ${data.calendarCount} calendars.`
+      );
+    } catch {
+      setCaldavError("Network error — check your connection and try again.");
+    } finally {
+      setCaldavSaving(false);
+    }
+  }
+
+  async function handleCaldavDisconnect() {
+    setCaldavSaving(true);
+    setCaldavError(null);
+    try {
+      await fetch("/api/caldav/connection", { method: "DELETE" });
+      setCaldavConnected(false);
+      setCaldavUrl("");
+      setCaldavUsername("");
+      setCaldavPassword("");
+      setCaldavSuccess(null);
+    } catch {
+      setCaldavError("Network error — check your connection and try again.");
+    } finally {
+      setCaldavSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!user?.isAdmin) return;
@@ -359,6 +428,80 @@ export default function SettingsPage() {
               className="hidden"
             />
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide">
+            Calendar
+          </h2>
+          <p className="text-sm text-neutral-500">
+            Connect a CalDAV calendar to see upcoming events alongside your notes. Read-only —
+            nothing here can create or change events on your server.
+          </p>
+          {caldavError && <p className="text-sm text-red-500">{caldavError}</p>}
+          {caldavSuccess && <p className="text-sm text-brand-600">{caldavSuccess}</p>}
+          {caldavConnected && (
+            <p className="text-sm text-neutral-500">
+              Connected to{" "}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">{caldavUrl}</span>{" "}
+              as {caldavUsername}.
+            </p>
+          )}
+          <form onSubmit={handleCaldavConnect} className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm text-neutral-500">Server URL</label>
+              <input
+                type="url"
+                required
+                value={caldavUrl}
+                onChange={(e) => setCaldavUrl(e.target.value)}
+                placeholder="https://caldav.example.com/dav.php"
+                className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm text-neutral-500">Username</label>
+                <input
+                  type="text"
+                  required
+                  value={caldavUsername}
+                  onChange={(e) => setCaldavUsername(e.target.value)}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-neutral-500">Password</label>
+                <input
+                  type="password"
+                  required={!caldavConnected}
+                  value={caldavPassword}
+                  onChange={(e) => setCaldavPassword(e.target.value)}
+                  placeholder={caldavConnected ? "Leave blank to keep current" : ""}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={caldavSaving}
+                className="rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              >
+                {caldavSaving ? "Connecting…" : caldavConnected ? "Reconnect" : "Connect"}
+              </button>
+              {caldavConnected && (
+                <button
+                  type="button"
+                  onClick={handleCaldavDisconnect}
+                  disabled={caldavSaving}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm text-red-500 disabled:opacity-40"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+          </form>
         </section>
 
         {user.isAdmin && (

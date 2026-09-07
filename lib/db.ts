@@ -44,6 +44,14 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS caldav_connections (
+    user_id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 function hasColumn(table: string, column: string): boolean {
@@ -454,6 +462,52 @@ export function setSetting(key: string, value: string) {
 
 export function isRegistrationOpen(): boolean {
   return getSetting("registration_open", "true") === "true";
+}
+
+// ---- caldav ----
+
+export type CaldavConnection = {
+  url: string;
+  username: string;
+  password: string;
+  createdAt: number;
+};
+
+type CaldavConnectionRow = {
+  user_id: string;
+  url: string;
+  username: string;
+  password: string;
+  created_at: number;
+};
+
+export function getCaldavConnection(userId: string): CaldavConnection | null {
+  const row = db
+    .prepare("SELECT * FROM caldav_connections WHERE user_id = ?")
+    .get(userId) as CaldavConnectionRow | undefined;
+  if (!row) return null;
+  return {
+    url: row.url,
+    username: row.username,
+    password: row.password,
+    createdAt: row.created_at,
+  };
+}
+
+export function setCaldavConnection(
+  userId: string,
+  conn: { url: string; username: string; password: string }
+) {
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO caldav_connections (user_id, url, username, password, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET url = excluded.url, username = excluded.username, password = excluded.password`
+  ).run(userId, conn.url, conn.username, conn.password, now);
+}
+
+export function deleteCaldavConnection(userId: string) {
+  db.prepare("DELETE FROM caldav_connections WHERE user_id = ?").run(userId);
 }
 
 export default db;
