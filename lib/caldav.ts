@@ -1,10 +1,12 @@
 import { XMLParser } from "fast-xml-parser";
 import ical, { type CalendarResponse, type VEvent } from "node-ical";
+import { randomUUID } from "crypto";
 
 export type CalendarEvent = {
   uid: string;
   href: string;
   etag?: string;
+  calendarName: string;
   summary: string;
   start: string;
   end: string;
@@ -182,6 +184,7 @@ function parseVEventFromIcs(ics: string): { item: VEvent; startDate: Date; endDa
 
 async function fetchEventsFromCalendar(
   calendarUrl: string,
+  calendarName: string,
   creds: CaldavCreds,
   start: Date,
   end: Date
@@ -212,6 +215,7 @@ async function fetchEventsFromCalendar(
       uid: item.uid ?? href,
       href: resolveUrl(calendarUrl, href),
       etag: etag ?? undefined,
+      calendarName,
       summary: unwrapValue(item.summary) || "(untitled event)",
       start: startDate.toISOString(),
       end: endDate.toISOString(),
@@ -233,7 +237,7 @@ export async function fetchCalendarEvents(
     throw new Error("No calendars found for this account.");
   }
   const results = await Promise.all(
-    calendars.map((c) => fetchEventsFromCalendar(c.url, creds, start, end))
+    calendars.map((c) => fetchEventsFromCalendar(c.url, c.name, creds, start, end))
   );
   const events = results.flat();
   events.sort((a, b) => a.start.localeCompare(b.start));
@@ -336,4 +340,51 @@ export async function saveEvent(
   if (res.status >= 400) {
     throw new Error(`Couldn't save the event (server returned ${res.status}).`);
   }
+}
+
+export type NewEventFields = {
+  summary: string;
+  location?: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+};
+
+export async function createEvent(
+  calendarUrl: string,
+  creds: CaldavCreds,
+  fields: NewEventFields
+): Promise<string> {
+  const uid = `${randomUUID()}@dm-notes`;
+  const stamp = formatIcsDate(new Date(), false);
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//DM Notes//EN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    fields.allDay
+      ? `DTSTART;VALUE=DATE:${formatIcsDate(fields.start, true)}`
+      : `DTSTART:${formatIcsDate(fields.start, false)}`,
+    fields.allDay
+      ? `DTEND;VALUE=DATE:${formatIcsDate(fields.end, true)}`
+      : `DTEND:${formatIcsDate(fields.end, false)}`,
+    `SUMMARY:${escapeIcsText(fields.summary)}`,
+  ];
+  if (fields.location) lines.push(`LOCATION:${escapeIcsText(fields.location)}`);
+  lines.push("END:VEVENT", "END:VCALENDAR");
+  const ics = lines.join("\r\n");
+
+  const base = calendarUrl.endsWith("/") ? calendarUrl : `${calendarUrl}/`;
+  const href = `${base}${uid}.ics`;
+
+  const res = await davRequest(href, "PUT", creds, ics, undefined, {
+    "Content-Type": "text/calendar; charset=utf-8",
+    "If-None-Match": "*",
+  });
+  if (res.status >= 400) {
+    throw new Error(`Couldn't create the event (server returned ${res.status}).`);
+  }
+  return href;
 }

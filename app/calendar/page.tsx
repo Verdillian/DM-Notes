@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Pencil, Settings } from "lucide-react";
 import EditEventDialog from "@/components/EditEventDialog";
+import CreateEventDialog from "@/components/CreateEventDialog";
 
 type CalendarEvent = {
   uid: string;
   href: string;
+  calendarName: string;
   summary: string;
   start: string;
   end: string;
@@ -16,6 +18,15 @@ type CalendarEvent = {
   location?: string;
   description?: string;
 };
+
+const CALENDAR_COLORS = [
+  { dot: "bg-brand-500", text: "text-brand-600" },
+  { dot: "bg-gold-500", text: "text-gold-600" },
+  { dot: "bg-sky-500", text: "text-sky-600" },
+  { dot: "bg-violet-500", text: "text-violet-600" },
+  { dot: "bg-rose-500", text: "text-rose-600" },
+  { dot: "bg-amber-500", text: "text-amber-600" },
+];
 
 function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -54,6 +65,7 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [creatingEvent, setCreatingEvent] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -128,6 +140,15 @@ export default function CalendarPage() {
     }
     return map;
   }, [events]);
+
+  const calendarNames = useMemo(
+    () => [...new Set(events.map((e) => e.calendarName))].sort(),
+    [events]
+  );
+  function colorForCalendar(name: string) {
+    const i = calendarNames.indexOf(name);
+    return CALENDAR_COLORS[i >= 0 ? i % CALENDAR_COLORS.length : 0];
+  }
 
   const today = new Date();
   const selectedEvents = eventsByDay.get(selectedDay.toDateString()) ?? [];
@@ -237,14 +258,16 @@ export default function CalendarPage() {
                     <span>{day.getDate()}</span>
                     {dayEvents.length > 0 && (
                       <span className="flex gap-0.5">
-                        {dayEvents.slice(0, 3).map((e) => (
-                          <span
-                            key={e.uid}
-                            className={`h-1 w-1 rounded-full ${
-                              isSelected ? "bg-white" : "bg-brand-500"
-                            }`}
-                          />
-                        ))}
+                        {[...new Set(dayEvents.map((e) => e.calendarName))]
+                          .slice(0, 4)
+                          .map((name) => (
+                            <span
+                              key={name}
+                              className={`h-1 w-1 rounded-full ${
+                                isSelected ? "bg-white" : colorForCalendar(name).dot
+                              }`}
+                            />
+                          ))}
                       </span>
                     )}
                   </button>
@@ -253,15 +276,23 @@ export default function CalendarPage() {
             </div>
 
             <div className="mt-6 space-y-2">
-              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
-                {sameDay(selectedDay, today)
-                  ? "Today"
-                  : selectedDay.toLocaleDateString([], {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })}
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+                  {sameDay(selectedDay, today)
+                    ? "Today"
+                    : selectedDay.toLocaleDateString([], {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                </h3>
+                <button
+                  onClick={() => setCreatingEvent(true)}
+                  className="text-xs text-brand-600 hover:underline"
+                >
+                  + New event
+                </button>
+              </div>
               {loading && <p className="text-sm text-neutral-400">Loading…</p>}
               {!loading && selectedEvents.length === 0 && (
                 <p className="text-sm text-neutral-400">Nothing on the calendar.</p>
@@ -273,7 +304,15 @@ export default function CalendarPage() {
                     className="group flex items-start justify-between gap-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">{event.summary}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full shrink-0 ${colorForCalendar(event.calendarName).dot}`}
+                        />
+                        <p className="text-sm font-medium truncate">{event.summary}</p>
+                      </div>
+                      <p className={`text-xs mt-0.5 ${colorForCalendar(event.calendarName).text}`}>
+                        {event.calendarName}
+                      </p>
                       <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
                       {event.location && (
                         <p className="text-xs text-neutral-400 mt-0.5 flex items-center gap-1">
@@ -302,6 +341,17 @@ export default function CalendarPage() {
           onClose={() => setEditingEvent(null)}
           onSaved={() => {
             setEditingEvent(null);
+            setReloadToken((t) => t + 1);
+          }}
+        />
+      )}
+
+      {creatingEvent && (
+        <CreateEventDialog
+          defaultDay={selectedDay}
+          onClose={() => setCreatingEvent(false)}
+          onCreated={() => {
+            setCreatingEvent(false);
             setReloadToken((t) => t + 1);
           }}
         />
