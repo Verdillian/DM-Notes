@@ -11,7 +11,7 @@ import {
   setUserAdmin,
   isRegistrationOpen,
 } from "@/lib/db";
-import { hashPassword, SESSION_COOKIE } from "@/lib/auth";
+import { hashPassword, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
@@ -69,11 +69,10 @@ export async function POST(req: NextRequest) {
     { id: user.id, email: user.email, isAdmin: isFirstUser },
     { status: 201 }
   );
-  res.cookies.set(SESSION_COOKIE, session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    expires: new Date(session.expiresAt),
-  });
+  res.cookies.set(
+    SESSION_COOKIE,
+    session.token,
+    sessionCookieOptions(new Date(session.expiresAt))
+  );
   return res;
 }

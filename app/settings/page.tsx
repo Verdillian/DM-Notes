@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, Upload, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Download, Upload, LogOut, ShieldCheck, KeyRound } from "lucide-react";
 
 type CurrentUser = { id: string; email: string; isAdmin: boolean };
+type AdminUser = { id: string; email: string; isAdmin: boolean; createdAt: number };
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -29,6 +30,13 @@ export default function SettingsPage() {
   const [adminSaving, setAdminSaving] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
 
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resetSaving, setResetSaving] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -45,7 +53,46 @@ export default function SettingsPage() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data: { registrationOpen: boolean }) => setRegistrationOpen(data.registrationOpen))
       .catch(() => setAdminError("Couldn't load admin settings — check your connection."));
+    fetch("/api/admin/users")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: AdminUser[]) => setUsers(data))
+      .catch(() => setAdminError("Couldn't load the user list — check your connection."));
   }, [user?.isAdmin]);
+
+  function startResetPassword(id: string) {
+    setResettingUserId(id);
+    setResetPasswordValue("");
+    setResetMessage(null);
+    setResetError(null);
+  }
+
+  async function handleResetPassword(id: string) {
+    if (resetPasswordValue.length < 8) {
+      setResetError("New password must be at least 8 characters");
+      return;
+    }
+    setResetSaving(true);
+    setResetError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword: resetPasswordValue }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setResetError(data.error ?? "Couldn't reset that password.");
+        return;
+      }
+      setResettingUserId(null);
+      setResetPasswordValue("");
+      setResetMessage("Password reset.");
+    } catch {
+      setResetError("Network error — check your connection and try again.");
+    } finally {
+      setResetSaving(false);
+    }
+  }
 
   async function handleAccountSubmit(e: FormEvent) {
     e.preventDefault();
@@ -335,6 +382,58 @@ export default function SettingsPage() {
                 className="h-5 w-5 accent-brand-600 shrink-0"
               />
             </label>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-neutral-500">Users</p>
+              {resetMessage && <p className="text-sm text-brand-600">{resetMessage}</p>}
+              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-800">
+                {users.map((u) => (
+                  <div key={u.id} className="px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm truncate">
+                        {u.email}
+                        {u.isAdmin && (
+                          <span className="ml-2 text-xs text-brand-600">admin</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() =>
+                          resettingUserId === u.id
+                            ? setResettingUserId(null)
+                            : startResetPassword(u.id)
+                        }
+                        className="inline-flex items-center gap-1.5 shrink-0 text-xs text-neutral-500 hover:text-brand-600"
+                      >
+                        <KeyRound size={13} />
+                        Reset password
+                      </button>
+                    </div>
+                    {resettingUserId === u.id && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="password"
+                          autoFocus
+                          value={resetPasswordValue}
+                          onChange={(e) => setResetPasswordValue(e.target.value)}
+                          placeholder="New password (min 8 characters)"
+                          className="flex-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        />
+                        <button
+                          onClick={() => handleResetPassword(u.id)}
+                          disabled={resetSaving}
+                          className="rounded-md bg-brand-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+                        >
+                          Set
+                        </button>
+                      </div>
+                    )}
+                    {resettingUserId === u.id && resetError && (
+                      <p className="mt-1 text-xs text-red-500">{resetError}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
 

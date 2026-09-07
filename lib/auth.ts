@@ -4,6 +4,31 @@ import { getSession, getUserById, type User } from "./db";
 
 export const SESSION_COOKIE = "session";
 
+// secure requires HTTPS — only turn it on once this is actually deployed
+// behind TLS (a reverse proxy, most likely), or the cookie will silently
+// never be sent and nobody will be able to log in over plain http.
+const isProduction = process.env.NODE_ENV === "production";
+
+export function sessionCookieOptions(expires: Date) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isProduction,
+    path: "/",
+    expires,
+  };
+}
+
+export function clearedSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isProduction,
+    path: "/",
+    expires: new Date(0),
+  };
+}
+
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(password, salt, 64).toString("hex");

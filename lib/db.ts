@@ -201,6 +201,16 @@ export function countUsers(): number {
   return (db.prepare("SELECT COUNT(*) as c FROM users").get() as { c: number }).c;
 }
 
+export function listUsers(): User[] {
+  const rows = db.prepare("SELECT * FROM users ORDER BY created_at ASC").all() as UserRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    isAdmin: !!row.is_admin,
+    createdAt: row.created_at,
+  }));
+}
+
 export function claimOrphanThreads(userId: string) {
   db.prepare("UPDATE threads SET user_id = ? WHERE user_id = ''").run(userId);
 }

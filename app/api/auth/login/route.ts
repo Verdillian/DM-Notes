@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserByEmail, createSession } from "@/lib/db";
-import { verifyPassword, SESSION_COOKIE } from "@/lib/auth";
+import { verifyPassword, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
@@ -23,11 +23,10 @@ export async function POST(req: NextRequest) {
 
   const session = createSession(user.id);
   const res = NextResponse.json({ id: user.id, email: user.email, isAdmin: user.isAdmin });
-  res.cookies.set(SESSION_COOKIE, session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    expires: new Date(session.expiresAt),
-  });
+  res.cookies.set(
+    SESSION_COOKIE,
+    session.token,
+    sessionCookieOptions(new Date(session.expiresAt))
+  );
   return res;
 }
