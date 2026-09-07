@@ -7,6 +7,7 @@ export type CalendarEvent = {
   href: string;
   etag?: string;
   calendarName: string;
+  calendarColor?: string;
   summary: string;
   start: string;
   end: string;
@@ -92,10 +93,11 @@ const HOMESET_PROPFIND = `<?xml version="1.0" encoding="utf-8"?>
 </D:propfind>`;
 
 const CALENDARS_PROPFIND = `<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:">
+<D:propfind xmlns:D="DAV:" xmlns:A="http://apple.com/ns/ical/">
   <D:prop>
     <D:resourcetype/>
     <D:displayname/>
+    <A:calendar-color/>
   </D:prop>
 </D:propfind>`;
 
@@ -117,7 +119,7 @@ function calendarQueryReport(start: Date, end: Date): string {
 </C:calendar-query>`;
 }
 
-export type DiscoveredCalendar = { url: string; name: string };
+export type DiscoveredCalendar = { url: string; name: string; color?: string };
 
 export async function discoverCalendars(creds: CaldavCreds): Promise<DiscoveredCalendar[]> {
   const principalRes = await davRequest(creds.url, "PROPFIND", creds, PRINCIPAL_PROPFIND, "0");
@@ -160,7 +162,8 @@ export async function discoverCalendars(creds: CaldavCreds): Promise<DiscoveredC
     const href = textOf(findAll(r, "href")[0]);
     if (!href) continue;
     const name = textOf(findAll(r, "displayname")[0]) || href;
-    calendars.push({ url: resolveUrl(homeUrl, href), name });
+    const color = textOf(findAll(r, "calendar-color")[0]) || undefined;
+    calendars.push({ url: resolveUrl(homeUrl, href), name, color });
   }
   return calendars;
 }
@@ -185,6 +188,7 @@ function parseVEventFromIcs(ics: string): { item: VEvent; startDate: Date; endDa
 async function fetchEventsFromCalendar(
   calendarUrl: string,
   calendarName: string,
+  calendarColor: string | undefined,
   creds: CaldavCreds,
   start: Date,
   end: Date
@@ -227,6 +231,7 @@ async function fetchEventsFromCalendar(
           href: resolvedHref,
           etag: etag ?? undefined,
           calendarName,
+          calendarColor,
           summary: unwrapValue(inst.summary) || "(untitled event)",
           start: inst.start.toISOString(),
           end: inst.end.toISOString(),
@@ -241,6 +246,7 @@ async function fetchEventsFromCalendar(
         href: resolvedHref,
         etag: etag ?? undefined,
         calendarName,
+        calendarColor,
         summary: unwrapValue(item.summary) || "(untitled event)",
         start: startDate.toISOString(),
         end: endDate.toISOString(),
@@ -263,7 +269,7 @@ export async function fetchCalendarEvents(
     throw new Error("No calendars found for this account.");
   }
   const results = await Promise.all(
-    calendars.map((c) => fetchEventsFromCalendar(c.url, c.name, creds, start, end))
+    calendars.map((c) => fetchEventsFromCalendar(c.url, c.name, c.color, creds, start, end))
   );
   const events = results.flat();
   events.sort((a, b) => a.start.localeCompare(b.start));

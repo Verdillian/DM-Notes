@@ -11,6 +11,7 @@ type CalendarEvent = {
   uid: string;
   href: string;
   calendarName: string;
+  calendarColor?: string;
   summary: string;
   start: string;
   end: string;
@@ -19,14 +20,8 @@ type CalendarEvent = {
   description?: string;
 };
 
-const CALENDAR_COLORS = [
-  { dot: "bg-brand-500", text: "text-brand-600" },
-  { dot: "bg-gold-500", text: "text-gold-600" },
-  { dot: "bg-sky-500", text: "text-sky-600" },
-  { dot: "bg-violet-500", text: "text-violet-600" },
-  { dot: "bg-rose-500", text: "text-rose-600" },
-  { dot: "bg-amber-500", text: "text-amber-600" },
-];
+// used only when the server doesn't report a calendar-color property
+const FALLBACK_COLORS = ["#2f8a54", "#e0b088", "#0ea5e9", "#8b5cf6", "#f43f5e", "#f59e0b"];
 
 function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -141,13 +136,26 @@ export default function CalendarPage() {
     return map;
   }, [events]);
 
-  const calendarNames = useMemo(
-    () => [...new Set(events.map((e) => e.calendarName))].sort(),
-    [events]
-  );
-  function colorForCalendar(name: string) {
-    const i = calendarNames.indexOf(name);
-    return CALENDAR_COLORS[i >= 0 ? i % CALENDAR_COLORS.length : 0];
+  const calendarColorByName = useMemo(() => {
+    const map = new Map<string, string>();
+    const names: string[] = [];
+    for (const e of events) {
+      if (!names.includes(e.calendarName)) names.push(e.calendarName);
+      if (e.calendarColor && !map.has(e.calendarName)) {
+        map.set(e.calendarName, e.calendarColor);
+      }
+    }
+    names.sort();
+    for (const name of names) {
+      if (!map.has(name)) {
+        map.set(name, FALLBACK_COLORS[names.indexOf(name) % FALLBACK_COLORS.length]);
+      }
+    }
+    return map;
+  }, [events]);
+
+  function colorForCalendar(name: string): string {
+    return calendarColorByName.get(name) ?? FALLBACK_COLORS[0];
   }
 
   const today = new Date();
@@ -263,9 +271,8 @@ export default function CalendarPage() {
                           .map((name) => (
                             <span
                               key={name}
-                              className={`h-1 w-1 rounded-full ${
-                                isSelected ? "bg-white" : colorForCalendar(name).dot
-                              }`}
+                              className="h-1 w-1 rounded-full"
+                              style={{ backgroundColor: isSelected ? "#fff" : colorForCalendar(name) }}
                             />
                           ))}
                       </span>
@@ -306,11 +313,12 @@ export default function CalendarPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`h-1.5 w-1.5 rounded-full shrink-0 ${colorForCalendar(event.calendarName).dot}`}
+                          className="h-1.5 w-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: colorForCalendar(event.calendarName) }}
                         />
                         <p className="text-sm font-medium truncate">{event.summary}</p>
                       </div>
-                      <p className={`text-xs mt-0.5 ${colorForCalendar(event.calendarName).text}`}>
+                      <p className="text-xs mt-0.5" style={{ color: colorForCalendar(event.calendarName) }}>
                         {event.calendarName}
                       </p>
                       <p className="text-xs text-neutral-500 mt-0.5">{timeLabel(event)}</p>
