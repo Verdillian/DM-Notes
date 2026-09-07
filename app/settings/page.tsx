@@ -231,7 +231,7 @@ export default function SettingsPage() {
       a.href = url;
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename="([^"]+)"/);
-      a.download = match?.[1] ?? "notes-backup.json";
+      a.download = match?.[1] ?? "dm-notes-export.tar.gz";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -248,27 +248,18 @@ export default function SettingsPage() {
     setImportMessage(null);
     setImportError(null);
     try {
-      const text = await file.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        setImportError("That file isn't valid JSON.");
-        return;
-      }
-      const res = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed),
-      });
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/import", { method: "POST", body: form });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setImportError(data.error ?? "Import failed");
         return;
       }
       const summary = await res.json();
+      const imageNote = summary.imagesImported ? `, ${summary.imagesImported} image(s)` : "";
       setImportMessage(
-        `Imported ${summary.threadsImported} thread(s), ${summary.notesImported} note(s).`
+        `Imported ${summary.threadsImported} thread(s), ${summary.notesImported} note(s)${imageNote}.`
       );
     } catch {
       setImportError("Network error — check your connection and try again.");
@@ -409,8 +400,8 @@ export default function SettingsPage() {
             Backup
           </h2>
           <p className="text-sm text-neutral-500">
-            Export everything to a JSON file, or import a backup — imports are merged in
-            without touching what&apos;s already here.
+            Export your notes, threads, and images into one file, or import a backup —
+            imports are merged in without touching what&apos;s already here.
           </p>
           {importMessage && <p className="text-sm text-brand-600">{importMessage}</p>}
           {importError && <p className="text-sm text-red-500">{importError}</p>}
@@ -433,7 +424,7 @@ export default function SettingsPage() {
             <input
               ref={importInputRef}
               type="file"
-              accept="application/json"
+              accept="application/json,.json,.tar.gz,.gz,application/gzip"
               onChange={handleImportFile}
               className="hidden"
             />
