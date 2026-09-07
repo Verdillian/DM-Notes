@@ -37,6 +37,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No calendar connected yet" }, { status: 400 });
   }
 
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`caldav-events:${user.id}:${ip}`, 60, 15 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a few minutes." },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const startParam = searchParams.get("start");
   const endParam = searchParams.get("end");
