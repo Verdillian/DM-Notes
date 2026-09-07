@@ -75,6 +75,8 @@ export default function Home() {
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [movingNoteId, setMovingNoteId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
 
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -252,6 +254,32 @@ export default function Home() {
     } catch {
       showError(CONNECTION_ERROR);
     }
+  }
+
+  function startEditNote(note: Note) {
+    setMovingNoteId(null);
+    setEditingNoteId(note.id);
+    setEditingContent(note.content);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingContent("");
+  }
+
+  async function submitEditNote(id: string) {
+    const content = editingContent.trim();
+    const current = notes.find((n) => n.id === id);
+    if (!content || !current) {
+      cancelEditNote();
+      return;
+    }
+    if (content === current.content) {
+      cancelEditNote();
+      return;
+    }
+    setEditingNoteId(null);
+    await patchNote(id, { content });
   }
 
   function removeNote(id: string) {
@@ -746,19 +774,74 @@ export default function Home() {
                   {threadsById.get(note.threadId)?.name ?? "?"}
                 </div>
               )}
-              <Markdown
-                content={note.content}
-                onTagClick={(tag) => setActiveTag(tag)}
-                onLinkClick={jumpToNote}
-                onChangeContent={(newContent) =>
-                  patchNote(note.id, { content: newContent })
-                }
-              />
+              {editingNoteId === note.id ? (
+                <textarea
+                  autoFocus
+                  value={editingContent}
+                  onChange={(e) => {
+                    setEditingContent(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                    const len = e.target.value.length;
+                    e.target.setSelectionRange(len, len);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEditNote();
+                    } else if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      submitEditNote(note.id);
+                    }
+                  }}
+                  className="w-full resize-none rounded-lg border border-brand-400 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  rows={1}
+                />
+              ) : (
+                <Markdown
+                  content={note.content}
+                  onTagClick={(tag) => setActiveTag(tag)}
+                  onLinkClick={jumpToNote}
+                  onChangeContent={(newContent) =>
+                    patchNote(note.id, { content: newContent })
+                  }
+                />
+              )}
               <div className="mt-1 flex items-center justify-between">
                 <span className="text-[11px] text-neutral-400">
-                  {formatTime(note.createdAt)}
+                  {editingNoteId === note.id
+                    ? "Enter to save · Shift+Enter for new line · Esc to cancel"
+                    : formatTime(note.createdAt)}
                 </span>
+                {editingNoteId === note.id ? (
+                  <div className="flex items-center gap-1 -mr-2">
+                    <button
+                      onClick={cancelEditNote}
+                      className="p-2.5 text-neutral-300 hover:text-red-500"
+                      title="Cancel"
+                    >
+                      <X size={15} />
+                    </button>
+                    <button
+                      onClick={() => submitEditNote(note.id)}
+                      className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-brand-600 text-white hover:bg-brand-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : (
                 <div className="relative flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-2">
+                  <button
+                    onClick={() => startEditNote(note)}
+                    className="p-2.5 text-neutral-300 hover:text-brand-600"
+                    title="Edit note"
+                  >
+                    <Pencil size={15} />
+                  </button>
                   <button
                     onClick={() => setMovingNoteId(movingNoteId === note.id ? null : note.id)}
                     className="p-2.5 text-neutral-300 hover:text-brand-600"
@@ -815,6 +898,7 @@ export default function Home() {
                     </>
                   )}
                 </div>
+                )}
               </div>
             </div>
           ))}
