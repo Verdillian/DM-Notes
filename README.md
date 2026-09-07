@@ -13,7 +13,7 @@ A self-hosted, chat-style note-taking app. Capture notes the way you'd send your
 - **Images** — attach via the composer or paste a screenshot directly.
 - **Pinning** — star a note to surface it in a pinned strip at the top of its thread.
 - **Accounts** — email/password auth, sessions via httpOnly cookies, passwords hashed with scrypt. The first account is an admin and can open/close registration to others, and reset any user's password.
-- **Export/Import** — full JSON backup and restore from Settings.
+- **Export/Import** — back up and restore your own notes, threads, and images entirely from Settings, no server access needed.
 - **Calendar (CalDAV)** — connect a CalDAV server (Baikal, Nextcloud, iCloud-compatible servers, etc.) in Settings to see, create, edit, and delete events in a month view alongside your notes. Reads each calendar's real color, expands recurring events properly, and supports daily/weekly/monthly/yearly recurrence when creating or editing.
 
 ## Getting started
