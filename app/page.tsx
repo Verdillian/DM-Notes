@@ -18,10 +18,14 @@ import {
   Calendar as CalendarIcon,
   Pencil,
   FolderInput,
+  Command,
+  Trash2,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import QuickSwitcher from "@/components/QuickSwitcher";
+import TrashPanel, { type TrashedNote } from "@/components/TrashPanel";
 import { extractTags, toPlainText } from "@/lib/markdown";
 
 function snippet(content: string, maxLen = 60): string {
@@ -36,6 +40,7 @@ type Note = {
   threadId: string;
   createdAt: number;
   updatedAt: number;
+  deletedAt: number | null;
 };
 
 type Thread = {
@@ -83,6 +88,10 @@ export default function Home() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [quickSwitchOpen, setQuickSwitchOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashNotes, setTrashNotes] = useState<TrashedNote[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     message: string;
@@ -183,6 +192,16 @@ export default function Home() {
     return map;
   }, [threads]);
 
+  const switcherNotes = useMemo(
+    () =>
+      notes.map((n) => ({
+        id: n.id,
+        label: snippet(n.content, 70),
+        threadName: threadsById.get(n.threadId)?.name ?? "?",
+      })),
+    [notes, threadsById]
+  );
+
   const linkSuggestions = useMemo(() => {
     if (!linkQuery) return [];
     const q = linkQuery.query.toLowerCase();
@@ -211,6 +230,17 @@ export default function Home() {
     const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setQuickSwitchOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function showError(message: string) {
     setToast(message);
@@ -283,7 +313,9 @@ export default function Home() {
   }
 
   function removeNote(id: string) {
-    requestConfirm("Delete this note? This can't be undone.", () => confirmRemoveNote(id));
+    requestConfirm("Delete this note? You can restore it from Trash for 30 days.", () =>
+      confirmRemoveNote(id)
+    );
   }
 
   async function confirmRemoveNote(id: string) {
@@ -294,6 +326,60 @@ export default function Home() {
       if (!res.ok) throw new Error();
     } catch {
       setNotes(previous);
+      showError(CONNECTION_ERROR);
+    }
+  }
+
+  async function openTrash() {
+    setTrashOpen(true);
+    setTrashLoading(true);
+    try {
+      const res = await fetch("/api/notes/trash");
+      if (!res.ok) throw new Error();
+      const trashed: Note[] = await res.json();
+      setTrashNotes(
+        trashed.map((n) => ({
+          id: n.id,
+          label: snippet(n.content, 80),
+          threadName: threadsById.get(n.threadId)?.name ?? "?",
+          deletedAt: n.deletedAt ?? Date.now(),
+        }))
+      );
+    } catch {
+      showError(CONNECTION_ERROR);
+    } finally {
+      setTrashLoading(false);
+    }
+  }
+
+  async function restoreTrashedNote(id: string) {
+    const previous = trashNotes;
+    setTrashNotes((prev) => prev.filter((n) => n.id !== id));
+    try {
+      const res = await fetch(`/api/notes/${id}/restore`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      const note: Note = await res.json();
+      setNotes((prev) => [...prev, note]);
+    } catch {
+      setTrashNotes(previous);
+      showError(CONNECTION_ERROR);
+    }
+  }
+
+  function deleteTrashedNoteForever(id: string) {
+    requestConfirm("Permanently delete this note? This can't be undone.", () =>
+      confirmDeleteTrashedNoteForever(id)
+    );
+  }
+
+  async function confirmDeleteTrashedNoteForever(id: string) {
+    const previous = trashNotes;
+    setTrashNotes((prev) => prev.filter((n) => n.id !== id));
+    try {
+      const res = await fetch(`/api/notes/${id}/permanent`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      setTrashNotes(previous);
       showError(CONNECTION_ERROR);
     }
   }
@@ -648,6 +734,13 @@ export default function Home() {
             <CalendarIcon size={16} />
             Calendar
           </Link>
+          <button
+            onClick={openTrash}
+            className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+          >
+            <Trash2 size={16} />
+            Trash
+          </button>
           <Link
             href="/settings"
             className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
@@ -689,6 +782,15 @@ export default function Home() {
                 className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 pl-8 pr-3 py-1.5 text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
+            <button
+              onClick={() => setQuickSwitchOpen(true)}
+              className="hidden sm:flex items-center gap-1 rounded-md border border-neutral-200 dark:border-neutral-700 px-2 py-1.5 text-xs text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+              title="Jump to a thread or note"
+              aria-label="Jump to a thread or note"
+            >
+              <Command size={14} />
+              <kbd className="font-sans">K</kbd>
+            </button>
             <button
               onClick={() => setHelpOpen(true)}
               className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
@@ -979,6 +1081,26 @@ export default function Home() {
             setConfirmState(null);
             onConfirm();
           }}
+        />
+      )}
+
+      {quickSwitchOpen && (
+        <QuickSwitcher
+          threads={threads}
+          notes={switcherNotes}
+          onSelectThread={selectThread}
+          onSelectNote={jumpToNote}
+          onClose={() => setQuickSwitchOpen(false)}
+        />
+      )}
+
+      {trashOpen && (
+        <TrashPanel
+          notes={trashNotes}
+          loading={trashLoading}
+          onRestore={restoreTrashedNote}
+          onDeleteForever={deleteTrashedNoteForever}
+          onClose={() => setTrashOpen(false)}
         />
       )}
     </div>

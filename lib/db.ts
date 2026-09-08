@@ -69,6 +69,9 @@ if (!hasColumn("threads", "user_id")) {
   // user to register so existing notes aren't lost when accounts were added.
   db.exec(`ALTER TABLE threads ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
 }
+if (!hasColumn("notes", "deleted_at")) {
+  db.exec(`ALTER TABLE notes ADD COLUMN deleted_at INTEGER`);
+}
 if (!hasColumn("users", "is_admin")) {
   db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
   // accounts created before the admin flag existed have none set — grant it
@@ -94,6 +97,7 @@ export type Note = {
   threadId: string;
   createdAt: number;
   updatedAt: number;
+  deletedAt: number | null;
 };
 
 export type Thread = {
@@ -110,6 +114,7 @@ type NoteRow = {
   thread_id: string;
   created_at: number;
   updated_at: number;
+  deleted_at: number | null;
 };
 
 type ThreadRow = {
@@ -135,6 +140,7 @@ function rowToNote(row: NoteRow): Note {
     threadId: row.thread_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -313,8 +319,34 @@ export function listNotesForUser(userId: string): Note[] {
     .prepare(
       `SELECT n.* FROM notes n
        JOIN threads t ON n.thread_id = t.id
-       WHERE t.user_id = ?
+       WHERE t.user_id = ? AND n.deleted_at IS NULL
        ORDER BY n.created_at ASC`
+    )
+    .all(userId) as NoteRow[];
+  return rows.map(rowToNote);
+}
+
+const TRASH_RETENTION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+function purgeOldTrash(userId: string) {
+  const cutoff = Date.now() - TRASH_RETENTION_MS;
+  db.prepare(
+    `DELETE FROM notes WHERE id IN (
+       SELECT n.id FROM notes n
+       JOIN threads t ON n.thread_id = t.id
+       WHERE t.user_id = ? AND n.deleted_at IS NOT NULL AND n.deleted_at < ?
+     )`
+  ).run(userId, cutoff);
+}
+
+export function listTrashedNotesForUser(userId: string): Note[] {
+  purgeOldTrash(userId);
+  const rows = db
+    .prepare(
+      `SELECT n.* FROM notes n
+       JOIN threads t ON n.thread_id = t.id
+       WHERE t.user_id = ? AND n.deleted_at IS NOT NULL
+       ORDER BY n.deleted_at DESC`
     )
     .all(userId) as NoteRow[];
   return rows.map(rowToNote);
@@ -334,6 +366,7 @@ export function createNote(content: string, threadId: string, userId: string): N
     threadId,
     createdAt: now,
     updatedAt: now,
+    deletedAt: null,
   };
 }
 
@@ -369,6 +402,26 @@ export function updateNote(
 }
 
 export function deleteNote(id: string, userId: string): boolean {
+  const row = db.prepare("SELECT thread_id FROM notes WHERE id = ?").get(id) as
+    | { thread_id: string }
+    | undefined;
+  if (!row) return false;
+  if (getThreadOwner(row.thread_id) !== userId) return false;
+  const result = db
+    .prepare("UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .run(Date.now(), id);
+  return result.changes > 0;
+}
+
+export function restoreNote(id: string, userId: string): Note | null {
+  const row = db.prepare("SELECT * FROM notes WHERE id = ?").get(id) as NoteRow | undefined;
+  if (!row) return null;
+  if (getThreadOwner(row.thread_id) !== userId) return null;
+  db.prepare("UPDATE notes SET deleted_at = NULL WHERE id = ?").run(id);
+  return rowToNote({ ...row, deleted_at: null });
+}
+
+export function permanentlyDeleteNote(id: string, userId: string): boolean {
   const row = db.prepare("SELECT thread_id FROM notes WHERE id = ?").get(id) as
     | { thread_id: string }
     | undefined;
@@ -445,7 +498,7 @@ export function importNote(
   db.prepare(
     "INSERT INTO notes (id, content, starred, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
   ).run(id, content, starred ? 1 : 0, threadId, createdAt, updatedAt);
-  return { id, content, starred, threadId, createdAt, updatedAt };
+  return { id, content, starred, threadId, createdAt, updatedAt, deletedAt: null };
 }
 
 // ---- app settings ----
