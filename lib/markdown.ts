@@ -156,6 +156,17 @@ marked.use({
       },
     },
   ],
+  tokenizer: {
+    // CommonMark treats any line indented 4+ spaces as a code block — a
+    // well-known gotcha for anyone just trying to visually indent a line,
+    // and redundant here since fenced ```blocks``` are the intentional,
+    // discoverable way to write code. Returning undefined makes it fall
+    // through to a normal paragraph instead; fenced blocks are handled by
+    // a separate tokenizer method and are unaffected.
+    code() {
+      return undefined;
+    },
+  },
 });
 
 export function parseTokens(content: string): Token[] {

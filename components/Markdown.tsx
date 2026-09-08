@@ -363,7 +363,7 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
 
   return (
     <>
-      <div className="space-y-1 text-sm leading-relaxed">
+      <div className="space-y-2 text-sm leading-relaxed">
         {tokens.map((t, i) => renderBlock(t, i))}
       </div>
       {lightboxSrc && (
