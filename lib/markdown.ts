@@ -1,4 +1,4 @@
-import { Marked, type Token, type Tokens } from "marked";
+import { Marked, type Token, type Tokens, type TokenizerThis } from "marked";
 
 export type TagToken = { type: "tag"; raw: string; value: string };
 export type WikilinkToken = {
@@ -6,6 +6,18 @@ export type WikilinkToken = {
   raw: string;
   noteId: string;
   label: string;
+};
+export type UnderlineToken = {
+  type: "underline";
+  raw: string;
+  text: string;
+  tokens: Token[];
+};
+export type HighlightToken = {
+  type: "highlight";
+  raw: string;
+  text: string;
+  tokens: Token[];
 };
 
 const marked = new Marked({ gfm: true, breaks: true });
@@ -23,6 +35,46 @@ marked.use({
         const match = /^#([a-zA-Z0-9_-]+)/.exec(src);
         if (match) {
           return { type: "tag", raw: match[0], value: match[1] } as TagToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      name: "underline",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("++");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(this: TokenizerThis, src: string) {
+        const match = /^\+\+([^\n]+?)\+\+/.exec(src);
+        if (match) {
+          return {
+            type: "underline",
+            raw: match[0],
+            text: match[1],
+            tokens: this.lexer.inlineTokens(match[1]),
+          } as UnderlineToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      name: "highlight",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("==");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(this: TokenizerThis, src: string) {
+        const match = /^==([^\n]+?)==/.exec(src);
+        if (match) {
+          return {
+            type: "highlight",
+            raw: match[0],
+            text: match[1],
+            tokens: this.lexer.inlineTokens(match[1]),
+          } as HighlightToken;
         }
         return undefined;
       },
@@ -97,6 +149,10 @@ function inlineToPlainText(tokens: Token[] | undefined): string {
           const t = tok as Tokens.Link | Tokens.Strong | Tokens.Em | Tokens.Del;
           return inlineToPlainText(t.tokens);
         }
+        case "underline":
+          return inlineToPlainText((tok as unknown as UnderlineToken).tokens);
+        case "highlight":
+          return inlineToPlainText((tok as unknown as HighlightToken).tokens);
         default:
           return "";
       }

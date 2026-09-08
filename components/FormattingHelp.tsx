@@ -9,6 +9,8 @@ const ENTRIES: Entry[] = [
   { label: "Bold", syntax: "**text**" },
   { label: "Italic", syntax: "*text*" },
   { label: "Strikethrough", syntax: "~~text~~" },
+  { label: "Underline", syntax: "++text++" },
+  { label: "Highlight", syntax: "==text==" },
   { label: "Inline code", syntax: "`text`" },
   { label: "Code block", syntax: "```lang\ncode\n```" },
   { label: "Heading", syntax: "# text" },
@@ -17,6 +19,8 @@ const ENTRIES: Entry[] = [
   { label: "Table row", syntax: "| a | b |" },
   { label: "Tag", syntax: "#tag" },
   { label: "Link a note", syntax: "[[ then pick from the list" },
+  { label: "Link (custom text)", syntax: "[text](https://…)" },
+  { label: "Link (plain URL)", syntax: "paste it — auto-links" },
   { label: "Checklist", syntax: "- [ ] task" },
   { label: "Image", syntax: "attach icon, or paste a screenshot" },
 ];

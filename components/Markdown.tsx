@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Token, Tokens } from "marked";
 import hljs from "highlight.js";
 import { Copy, Check, X } from "lucide-react";
-import { parseTokens, toggleTaskItem, type TagToken, type WikilinkToken } from "@/lib/markdown";
+import {
+  parseTokens,
+  toggleTaskItem,
+  type TagToken,
+  type WikilinkToken,
+  type UnderlineToken,
+  type HighlightToken,
+} from "@/lib/markdown";
 
 type Props = {
   content: string;
@@ -126,6 +133,18 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
           return <em key={key}>{renderInline((tok as Tokens.Em).tokens, `${key}-`)}</em>;
         case "del":
           return <del key={key}>{renderInline((tok as Tokens.Del).tokens, `${key}-`)}</del>;
+        case "underline":
+          return (
+            <u key={key}>
+              {renderInline((tok as unknown as UnderlineToken).tokens, `${key}-`)}
+            </u>
+          );
+        case "highlight":
+          return (
+            <mark key={key} className="bg-gold-500/30 text-inherit rounded px-0.5">
+              {renderInline((tok as unknown as HighlightToken).tokens, `${key}-`)}
+            </mark>
+          );
         case "codespan":
           return (
             <code

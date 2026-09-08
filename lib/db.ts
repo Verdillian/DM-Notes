@@ -494,7 +494,10 @@ export function createWelcomeThread(userId: string): Thread {
     `Linking notes — the raw pattern is:\n\n\`\`\`\n[[note-id|label]]\n\`\`\`\n\nbut you don't need to type an ID by hand: just type "[[" and pick from the autocomplete. Here's a real one: [[${intro.id}|the first tip]] — click it to jump there.`
   );
   add(
-    "Text styling — type this:\n\n```\n**bold**, *italic*, ~~strikethrough~~\n```\n\nto get: **bold**, *italic*, ~~strikethrough~~"
+    "Linking out to the web — paste a URL and it auto-links: https://example.com — or give it your own text:\n\n```\n[some text](https://example.com)\n```\n\nto get: [some text](https://example.com)"
+  );
+  add(
+    "Text styling — type this:\n\n```\n**bold**, *italic*, ~~strikethrough~~, ++underline++, ==highlight==\n```\n\nto get: **bold**, *italic*, ~~strikethrough~~, ++underline++, ==highlight=="
   );
   add(
     'Code — wrap something in single backticks for inline code, or fence a block with three backticks and a language name for syntax highlighting plus a copy button:\n\n````\n```js\nconsole.log("hi")\n```\n````\n\nRendered:\n\n```js\nfunction hello() {\n  console.log("hi");\n}\n```'
