@@ -722,7 +722,7 @@ export default function Home() {
             <Plus size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
+        <div className="flex-1 overflow-y-auto px-2 pt-2 space-y-0.5">
           {threads.map((t) => {
             const count = notes.filter((n) => n.threadId === t.id).length;
             if (renamingThreadId === t.id) {
