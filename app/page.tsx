@@ -30,7 +30,7 @@ import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickSwitcher from "@/components/QuickSwitcher";
-import TrashPanel, { type TrashedNote } from "@/components/TrashPanel";
+import TrashPanel, { type TrashedNote, type TrashedThread } from "@/components/TrashPanel";
 import CreateEventDialog from "@/components/CreateEventDialog";
 import { extractTags, toPlainText } from "@/lib/markdown";
 import { loadPendingQueue, savePendingQueue, type PendingNote } from "@/lib/pendingQueue";
@@ -111,6 +111,8 @@ export default function Home() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashNotes, setTrashNotes] = useState<TrashedNote[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [trashThreads, setTrashThreads] = useState<TrashedThread[]>([]);
+  const [trashThreadsLoading, setTrashThreadsLoading] = useState(false);
   const [pendingNotes, setPendingNotes] = useState<PendingNote[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
@@ -512,6 +514,7 @@ export default function Home() {
   async function openTrash() {
     setTrashOpen(true);
     setTrashLoading(true);
+    setTrashThreadsLoading(true);
     try {
       const res = await fetch("/api/notes/trash");
       if (!res.ok) throw new Error();
@@ -528,6 +531,56 @@ export default function Home() {
       showError(CONNECTION_ERROR);
     } finally {
       setTrashLoading(false);
+    }
+    try {
+      const res = await fetch("/api/threads/trash");
+      if (!res.ok) throw new Error();
+      setTrashThreads(await res.json());
+    } catch {
+      showError(CONNECTION_ERROR);
+    } finally {
+      setTrashThreadsLoading(false);
+    }
+  }
+
+  async function restoreTrashedThread(id: string) {
+    const previous = trashThreads;
+    setTrashThreads((prev) => prev.filter((t) => t.id !== id));
+    try {
+      const res = await fetch(`/api/threads/${id}/restore`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      const thread: Thread = await res.json();
+      setThreads((prev) =>
+        [...prev, thread].sort((a, b) =>
+          a.pinned === b.pinned ? a.createdAt - b.createdAt : a.pinned ? -1 : 1
+        )
+      );
+      // the restore brought its notes back too — refresh from the server
+      // rather than trying to reconstruct what we no longer had cached.
+      const notesRes = await fetch("/api/notes");
+      if (notesRes.ok) setNotes(await notesRes.json());
+    } catch {
+      setTrashThreads(previous);
+      showError(CONNECTION_ERROR);
+    }
+  }
+
+  function deleteTrashedThreadForever(id: string) {
+    requestConfirm(
+      "Permanently delete this thread and everything in it? This can't be undone.",
+      () => confirmDeleteTrashedThreadForever(id)
+    );
+  }
+
+  async function confirmDeleteTrashedThreadForever(id: string) {
+    const previous = trashThreads;
+    setTrashThreads((prev) => prev.filter((t) => t.id !== id));
+    try {
+      const res = await fetch(`/api/threads/${id}/permanent`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      setTrashThreads(previous);
+      showError(CONNECTION_ERROR);
     }
   }
 
@@ -635,7 +688,7 @@ export default function Home() {
     if (threads.length <= 1) return;
     const thread = threadsById.get(id);
     requestConfirm(
-      `Delete "${thread?.name}" and all its notes? This can't be undone.`,
+      `Delete "${thread?.name}" and all its notes? You can restore it from Trash for 30 days.`,
       () => confirmDeleteThread(id)
     );
   }
@@ -1482,6 +1535,10 @@ export default function Home() {
           loading={trashLoading}
           onRestore={restoreTrashedNote}
           onDeleteForever={deleteTrashedNoteForever}
+          threads={trashThreads}
+          threadsLoading={trashThreadsLoading}
+          onRestoreThread={restoreTrashedThread}
+          onDeleteThreadForever={deleteTrashedThreadForever}
           onClose={() => setTrashOpen(false)}
         />
       )}

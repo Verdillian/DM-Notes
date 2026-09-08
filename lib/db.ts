@@ -76,6 +76,8 @@ function safeAddColumn(alterSql: string) {
   }
 }
 
+const TRASH_RETENTION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
 if (!hasColumn("notes", "thread_id")) {
   safeAddColumn(`ALTER TABLE notes ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''`);
 }
@@ -89,6 +91,9 @@ if (!hasColumn("notes", "deleted_at")) {
 }
 if (!hasColumn("threads", "pinned")) {
   safeAddColumn(`ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+}
+if (!hasColumn("threads", "deleted_at")) {
+  safeAddColumn(`ALTER TABLE threads ADD COLUMN deleted_at INTEGER`);
 }
 if (!hasColumn("users", "theme")) {
   safeAddColumn(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
@@ -133,6 +138,7 @@ export type Thread = {
   userId: string;
   createdAt: number;
   pinned: boolean;
+  deletedAt: number | null;
 };
 
 type NoteRow = {
@@ -151,6 +157,7 @@ type ThreadRow = {
   user_id: string;
   created_at: number;
   pinned: number;
+  deleted_at: number | null;
 };
 
 type UserRow = {
@@ -181,6 +188,7 @@ function rowToThread(row: ThreadRow): Thread {
     userId: row.user_id,
     createdAt: row.created_at,
     pinned: !!row.pinned,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -307,7 +315,9 @@ export function deleteSession(token: string) {
 
 export function listThreads(userId: string): Thread[] {
   const rows = db
-    .prepare("SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, created_at ASC")
+    .prepare(
+      "SELECT * FROM threads WHERE user_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, created_at ASC"
+    )
     .all(userId) as ThreadRow[];
   return rows.map(rowToThread);
 }
@@ -318,7 +328,7 @@ export function createThread(name: string, userId: string): Thread {
   db.prepare(
     "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, name, userId, now);
-  return { id, name, userId, createdAt: now, pinned: false };
+  return { id, name, userId, createdAt: now, pinned: false, deletedAt: null };
 }
 
 export function renameThread(id: string, name: string, userId: string): Thread | null {
@@ -341,15 +351,81 @@ export function setThreadPinned(id: string, userId: string, pinned: boolean): Th
 
 export function deleteThread(id: string, userId: string): boolean {
   const existing = db
-    .prepare("SELECT id FROM threads WHERE id = ? AND user_id = ?")
+    .prepare("SELECT id FROM threads WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
     .get(id, userId);
   if (!existing) return false;
-  const tx = db.transaction((threadId: string) => {
-    db.prepare("DELETE FROM notes WHERE thread_id = ?").run(threadId);
-    db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
+  const now = Date.now();
+  const tx = db.transaction(() => {
+    // cascade to whatever notes are currently active in this thread, tagged
+    // with the SAME timestamp as the thread itself so restoreThread() can
+    // tell "deleted because the thread was deleted" apart from a note that
+    // was already individually trashed beforehand (which should stay trashed).
+    db.prepare(
+      "UPDATE notes SET deleted_at = ? WHERE thread_id = ? AND deleted_at IS NULL"
+    ).run(now, id);
+    db.prepare("UPDATE threads SET deleted_at = ? WHERE id = ?").run(now, id);
   });
-  tx(id);
+  tx();
   return true;
+}
+
+export function restoreThread(id: string, userId: string): Thread | null {
+  const existing = db
+    .prepare("SELECT * FROM threads WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL")
+    .get(id, userId) as ThreadRow | undefined;
+  if (!existing) return null;
+  const deletedAt = existing.deleted_at;
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE threads SET deleted_at = NULL WHERE id = ?").run(id);
+    db.prepare(
+      "UPDATE notes SET deleted_at = NULL WHERE thread_id = ? AND deleted_at = ?"
+    ).run(id, deletedAt);
+  });
+  tx();
+  return rowToThread({ ...existing, deleted_at: null });
+}
+
+export function permanentlyDeleteThread(id: string, userId: string): boolean {
+  const existing = db.prepare("SELECT id FROM threads WHERE id = ? AND user_id = ?").get(id, userId);
+  if (!existing) return false;
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM notes WHERE thread_id = ?").run(id);
+    db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+  });
+  tx();
+  return true;
+}
+
+function purgeOldThreadTrash(userId: string) {
+  const cutoff = Date.now() - TRASH_RETENTION_MS;
+  const stale = db
+    .prepare(
+      "SELECT id FROM threads WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?"
+    )
+    .all(userId, cutoff) as { id: string }[];
+  if (stale.length === 0) return;
+  const tx = db.transaction(() => {
+    for (const { id } of stale) {
+      db.prepare("DELETE FROM notes WHERE thread_id = ?").run(id);
+      db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+    }
+  });
+  tx();
+}
+
+export type TrashedThread = Thread & { noteCount: number };
+
+export function listTrashedThreads(userId: string): TrashedThread[] {
+  purgeOldThreadTrash(userId);
+  const rows = db
+    .prepare(
+      `SELECT t.*, (SELECT COUNT(*) FROM notes n WHERE n.thread_id = t.id) as note_count
+       FROM threads t
+       WHERE t.user_id = ? AND t.deleted_at IS NOT NULL
+       ORDER BY t.deleted_at DESC`
+    )
+    .all(userId) as (ThreadRow & { note_count: number })[];
+  return rows.map((row) => ({ ...rowToThread(row), noteCount: row.note_count }));
 }
 
 export function importThread(name: string, userId: string, createdAt: number): Thread {
@@ -357,15 +433,27 @@ export function importThread(name: string, userId: string, createdAt: number): T
   db.prepare(
     "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, name, userId, createdAt);
-  return { id, name, userId, createdAt, pinned: false };
+  return { id, name, userId, createdAt, pinned: false, deletedAt: null };
 }
 
 // ---- notes ----
 
+// Ownership only — deliberately not filtered by deleted_at, since this is
+// also used to authorize restoring/purging an individually-trashed note
+// whose thread might independently be trashed too; that shouldn't block
+// those operations. Creating/moving a note INTO a thread checks liveness
+// separately via getActiveThreadOwner.
 function getThreadOwner(threadId: string): string | null {
   const row = db.prepare("SELECT user_id FROM threads WHERE id = ?").get(threadId) as
     | { user_id: string }
     | undefined;
+  return row ? row.user_id : null;
+}
+
+function getActiveThreadOwner(threadId: string): string | null {
+  const row = db
+    .prepare("SELECT user_id FROM threads WHERE id = ? AND deleted_at IS NULL")
+    .get(threadId) as { user_id: string } | undefined;
   return row ? row.user_id : null;
 }
 
@@ -380,8 +468,6 @@ export function listNotesForUser(userId: string): Note[] {
     .all(userId) as NoteRow[];
   return rows.map(rowToNote);
 }
-
-const TRASH_RETENTION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 function purgeOldTrash(userId: string) {
   const cutoff = Date.now() - TRASH_RETENTION_MS;
@@ -398,9 +484,16 @@ export function listTrashedNotesForUser(userId: string): Note[] {
   purgeOldTrash(userId);
   const rows = db
     .prepare(
+      // A note cascade-deleted along with its thread (same timestamp, set
+      // atomically in deleteThread's transaction) is hidden here — it's
+      // only reachable by restoring/purging that thread as a unit from the
+      // Threads tab. A note that was ALREADY individually trashed before
+      // its thread was later also deleted keeps its own distinct
+      // deleted_at, so it stays visible and independently manageable here.
       `SELECT n.* FROM notes n
        JOIN threads t ON n.thread_id = t.id
        WHERE t.user_id = ? AND n.deleted_at IS NOT NULL
+         AND (t.deleted_at IS NULL OR n.deleted_at != t.deleted_at)
        ORDER BY n.deleted_at DESC`
     )
     .all(userId) as NoteRow[];
@@ -408,7 +501,7 @@ export function listTrashedNotesForUser(userId: string): Note[] {
 }
 
 export function createNote(content: string, threadId: string, userId: string): Note | null {
-  if (getThreadOwner(threadId) !== userId) return null;
+  if (getActiveThreadOwner(threadId) !== userId) return null;
   const now = Date.now();
   const id = randomUUID();
   db.prepare(
@@ -435,7 +528,7 @@ export function updateNote(
     | undefined;
   if (!existingRow) return null;
   if (getThreadOwner(existingRow.thread_id) !== userId) return null;
-  if (updates.threadId && getThreadOwner(updates.threadId) !== userId) return null;
+  if (updates.threadId && getActiveThreadOwner(updates.threadId) !== userId) return null;
 
   const content = updates.content ?? existingRow.content;
   const starred =
