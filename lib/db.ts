@@ -96,6 +96,13 @@ if (!hasColumn("threads", "pinned")) {
 if (!hasColumn("threads", "deleted_at")) {
   safeAddColumn(`ALTER TABLE threads ADD COLUMN deleted_at INTEGER`);
 }
+if (!hasColumn("threads", "sort_order")) {
+  safeAddColumn(`ALTER TABLE threads ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+  // backfill so upgrading doesn't scramble anyone's existing thread order —
+  // safe to run redundantly if two workers race this migration, since it's
+  // the same idempotent result either way.
+  db.exec(`UPDATE threads SET sort_order = created_at`);
+}
 if (!hasColumn("users", "theme")) {
   safeAddColumn(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
 }
@@ -159,6 +166,7 @@ type ThreadRow = {
   created_at: number;
   pinned: number;
   deleted_at: number | null;
+  sort_order: number;
 };
 
 type UserRow = {
@@ -317,18 +325,43 @@ export function deleteSession(token: string) {
 export function listThreads(userId: string): Thread[] {
   const rows = db
     .prepare(
-      "SELECT * FROM threads WHERE user_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, created_at ASC"
+      "SELECT * FROM threads WHERE user_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, sort_order ASC"
     )
     .all(userId) as ThreadRow[];
   return rows.map(rowToThread);
 }
 
+// Drag-and-drop reorder: the client sends the full ordered list of its
+// (non-deleted) thread ids and each gets re-numbered to its index. Simple
+// full-renumber rather than fractional-index insertion — at the scale of
+// one person's threads, renumbering everything on every reorder is cheap
+// and avoids float-precision edge cases entirely.
+export function reorderThreads(userId: string, orderedIds: string[]): boolean {
+  const owned = db
+    .prepare("SELECT id FROM threads WHERE user_id = ? AND deleted_at IS NULL")
+    .all(userId) as { id: string }[];
+  const ownedIds = new Set(owned.map((r) => r.id));
+  if (orderedIds.length !== owned.length) return false;
+  if (!orderedIds.every((id) => ownedIds.has(id))) return false;
+
+  const update = db.prepare("UPDATE threads SET sort_order = ? WHERE id = ?");
+  const tx = db.transaction(() => {
+    orderedIds.forEach((id, index) => update.run(index, id));
+  });
+  tx();
+  return true;
+}
+
 export function createThread(name: string, userId: string): Thread {
   const id = randomUUID();
   const now = Date.now();
+  // sort_order = now() lands a new thread after everything else, whether
+  // existing threads still use their original createdAt-based sort_order
+  // or small 0,1,2... indices from a manual reorder — both are always
+  // smaller than a fresh timestamp.
   db.prepare(
-    "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
-  ).run(id, name, userId, now);
+    "INSERT INTO threads (id, name, user_id, created_at, sort_order) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, name, userId, now, now);
   return { id, name, userId, createdAt: now, pinned: false, deletedAt: null };
 }
 
@@ -432,8 +465,8 @@ export function listTrashedThreads(userId: string): TrashedThread[] {
 export function importThread(name: string, userId: string, createdAt: number): Thread {
   const id = randomUUID();
   db.prepare(
-    "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
-  ).run(id, name, userId, createdAt);
+    "INSERT INTO threads (id, name, user_id, created_at, sort_order) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, name, userId, createdAt, createdAt);
   return { id, name, userId, createdAt, pinned: false, deletedAt: null };
 }
 

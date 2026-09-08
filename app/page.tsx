@@ -4,6 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Plus,
   X,
   Star,
@@ -25,6 +40,7 @@ import {
   Bell,
   CheckSquare,
   Check,
+  GripVertical,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
@@ -76,6 +92,121 @@ function isCoarsePointer(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
 }
 
+function SortableThread({
+  thread,
+  count,
+  isActive,
+  isRenaming,
+  renameValue,
+  onRenameValueChange,
+  onSubmitRename,
+  onCancelRename,
+  onSelect,
+  onStartRename,
+  onTogglePinned,
+  onDelete,
+  canDelete,
+}: {
+  thread: Thread;
+  count: number;
+  isActive: boolean;
+  isRenaming: boolean;
+  renameValue: string;
+  onRenameValueChange: (v: string) => void;
+  onSubmitRename: () => void;
+  onCancelRename: () => void;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onTogglePinned: () => void;
+  onDelete: () => void;
+  canDelete: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: thread.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  if (isRenaming) {
+    return (
+      <input
+        ref={setNodeRef}
+        style={style}
+        autoFocus
+        value={renameValue}
+        onChange={(e) => onRenameValueChange(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmitRename();
+          if (e.key === "Escape") onCancelRename();
+        }}
+        onBlur={onSubmitRename}
+        className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-brand-400 bg-white dark:bg-neutral-900 focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group flex items-center rounded-lg ${
+        isActive
+          ? "bg-brand-100 dark:bg-brand-900 shadow-[var(--active-thread-glow)]"
+          : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
+      }`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="p-2.5 -m-1 text-neutral-300 hover:text-neutral-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+        title="Drag to reorder"
+        aria-label="Drag to reorder"
+      >
+        <GripVertical size={13} />
+      </button>
+      <button
+        onClick={onSelect}
+        onDoubleClick={onStartRename}
+        className="flex-1 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
+      >
+        {thread.name}
+        <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
+      </button>
+      <button
+        onClick={onTogglePinned}
+        className={
+          thread.pinned
+            ? "p-2.5 -m-1 text-gold-500"
+            : "p-2.5 -m-1 text-neutral-300 hover:text-gold-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+        }
+        title={thread.pinned ? "Unpin thread" : "Pin thread to top"}
+      >
+        <Pin size={13} fill={thread.pinned ? "currentColor" : "none"} />
+      </button>
+      <button
+        onClick={onStartRename}
+        className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+        title="Rename thread"
+      >
+        <Pencil size={13} />
+      </button>
+      {canDelete && (
+        <button
+          onClick={onDelete}
+          className="p-2.5 -m-1 mr-1 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+          title="Delete thread"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -101,6 +232,10 @@ export default function Home() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
+
+  const threadDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+  );
 
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -706,6 +841,30 @@ export default function Home() {
     }
   }
 
+  function handleThreadDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = threads.findIndex((t) => t.id === active.id);
+    const newIndex = threads.findIndex((t) => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    if (threads[oldIndex].pinned !== threads[newIndex].pinned) return;
+    const previous = threads;
+    const reordered = arrayMove(threads, oldIndex, newIndex);
+    setThreads(reordered);
+    fetch("/api/threads/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threadIds: reordered.map((t) => t.id) }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error();
+      })
+      .catch(() => {
+        setThreads(previous);
+        showError(CONNECTION_ERROR);
+      });
+  }
+
   function selectThread(id: string) {
     setActiveThreadId(id);
     setSearch("");
@@ -919,72 +1078,35 @@ export default function Home() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pt-2 space-y-0.5">
-          {threads.map((t) => {
-            const count = notes.filter((n) => n.threadId === t.id).length;
-            if (renamingThreadId === t.id) {
-              return (
-                <input
-                  key={t.id}
-                  autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitRenameThread(t.id);
-                    if (e.key === "Escape") setRenamingThreadId(null);
-                  }}
-                  onBlur={() => submitRenameThread(t.id)}
-                  className="w-full rounded-lg px-2.5 py-1.5 text-sm border border-brand-400 bg-white dark:bg-neutral-900 focus:outline-none"
-                />
-              );
-            }
-            return (
-              <div
-                key={t.id}
-                className={`group flex items-center rounded-lg ${
-                  activeThreadId === t.id && !isSearching
-                    ? "bg-brand-100 dark:bg-brand-900 shadow-[var(--active-thread-glow)]"
-                    : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
-                }`}
-              >
-                <button
-                  onClick={() => selectThread(t.id)}
-                  onDoubleClick={() => startRenameThread(t)}
-                  className="flex-1 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
-                >
-                  {t.name}
-                  <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
-                </button>
-                <button
-                  onClick={() => toggleThreadPinned(t)}
-                  className={
-                    t.pinned
-                      ? "p-2.5 -m-1 text-gold-500"
-                      : "p-2.5 -m-1 text-neutral-300 hover:text-gold-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                  }
-                  title={t.pinned ? "Unpin thread" : "Pin thread to top"}
-                >
-                  <Pin size={13} fill={t.pinned ? "currentColor" : "none"} />
-                </button>
-                <button
-                  onClick={() => startRenameThread(t)}
-                  className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                  title="Rename thread"
-                >
-                  <Pencil size={13} />
-                </button>
-                {threads.length > 1 && (
-                  <button
-                    onClick={() => deleteThread(t.id)}
-                    className="p-2.5 -m-1 mr-1 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                    title="Delete thread"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          <DndContext
+            sensors={threadDragSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleThreadDragEnd}
+          >
+            <SortableContext items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              {threads.map((t) => {
+                const count = notes.filter((n) => n.threadId === t.id).length;
+                return (
+                  <SortableThread
+                    key={t.id}
+                    thread={t}
+                    count={count}
+                    isActive={activeThreadId === t.id && !isSearching}
+                    isRenaming={renamingThreadId === t.id}
+                    renameValue={renameValue}
+                    onRenameValueChange={setRenameValue}
+                    onSubmitRename={() => submitRenameThread(t.id)}
+                    onCancelRename={() => setRenamingThreadId(null)}
+                    onSelect={() => selectThread(t.id)}
+                    onStartRename={() => startRenameThread(t)}
+                    onTogglePinned={() => toggleThreadPinned(t)}
+                    onDelete={() => deleteThread(t.id)}
+                    canDelete={threads.length > 1}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
           {addingThread && (
             <input
               autoFocus

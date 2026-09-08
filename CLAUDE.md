@@ -10,13 +10,42 @@ next — it covers what isn't obvious from reading the code cold.
 ## Data model & storage
 
 Everything lives in one SQLite file (`data/notes.db`, gitignored) plus
-`data/uploads/<userId>/` for images. `lib/db.ts` is the only place that
+`data/uploads/<userId>/` for images and attachments, and
+`data/.encryption-key` (auto-generated, 0600, gitignored — or set
+`CALDAV_ENCRYPTION_KEY` in `.env` instead) for the AES-256-GCM key that
+encrypts stored CalDAV credentials. `lib/db.ts` is the only place that
 touches the database. Schema changes are additive, idempotent migrations
-guarded by `hasColumn()` at module load — never a destructive `ALTER`, and
-never assume a fresh schema. Notes are soft-deleted (`deleted_at`, NULL =
-active); `listNotesForUser` filters them out, `listTrashedNotesForUser`
-purges anything older than 30 days on read. Threads are hard-deleted
-(cascades their notes) — there's no thread-level trash, by design.
+guarded by `hasColumn()` at module load, applied via the `safeAddColumn()`
+helper (try/catch around the `ALTER TABLE`, swallowing "duplicate column
+name") rather than a bare `db.exec` — Next's build spawns multiple worker
+processes that can race a naive check-then-`ALTER` migration on a fresh
+database, which crashed a real Docker build under emulated arm64 before
+this was added. Never assume a fresh schema, and never a destructive
+`ALTER`.
+
+Both notes and threads are soft-deleted (`deleted_at`, NULL = active).
+`listNotesForUser`/`listThreads` filter them out; the trash views purge
+anything older than 30 days on read. Deleting a thread cascades a
+soft-delete to its currently-active notes, tagged with the *same*
+`deleted_at` timestamp as the thread itself — that shared timestamp is
+what lets `restoreThread` know which notes to bring back (only ones that
+match exactly) without touching notes that were already independently
+trashed before the thread was deleted, and what lets the Notes trash tab
+correctly hide cascade-deleted notes (bundled into the Threads tab
+instead) while still showing independently-trashed ones. Because of this,
+there are two separate thread-ownership lookups in `lib/db.ts`:
+`getThreadOwner` (unfiltered — used by note delete/restore/permanent-delete,
+which must keep working even if the note's thread is later also trashed)
+and `getActiveThreadOwner` (filters `deleted_at IS NULL` — used only by
+`createNote`/`updateNote`'s move-to-thread validation, where creating or
+moving a note into an already-deleted thread should actually be blocked).
+Don't collapse these back into one function without re-checking both call
+sites. Threads also carry a `sort_order` column (full-renumber-on-reorder,
+not fractional indexing — simple and fine at personal-note-taking scale)
+that the sidebar's drag-and-drop reordering (`@dnd-kit`) writes via
+`PATCH /api/threads/reorder`; it's intentionally not part of the public
+`Thread` type returned to the client, since ordering is trusted from the
+API response array order rather than exposed as a sortable field.
 
 ## Theming (app/globals.css, lib/themes.ts)
 
