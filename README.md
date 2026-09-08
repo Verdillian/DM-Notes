@@ -15,6 +15,10 @@ A self-hosted, chat-style note-taking app. Capture notes the way you'd send your
 - **Accounts** — email/password auth, sessions via httpOnly cookies, passwords hashed with scrypt. The first account is an admin and can open/close registration to others, and reset any user's password.
 - **Export/Import** — back up and restore your own notes, threads, and images entirely from Settings, no server access needed.
 - **Calendar (CalDAV)** — connect a CalDAV server (Baikal, Nextcloud, iCloud-compatible servers, etc.) in Settings to see, create, edit, and delete events in a month view alongside your notes. Reads each calendar's real color, expands recurring events properly, and supports daily/weekly/monthly/yearly recurrence when creating or editing.
+- **Quick switcher** — press Cmd/Ctrl+K to jump straight to any thread or note by name/content match.
+- **Trash** — deleting a note doesn't erase it immediately; it's recoverable from Trash (sidebar) for 30 days before being purged for good.
+- **Offline draft queue** — if a note fails to send (connection drop, server unreachable), it's kept locally and retried automatically once you're back online, instead of being lost.
+- **Installable (PWA)** — add DM Notes to your phone or desktop home screen like a native app.
 
 ## Getting started
 

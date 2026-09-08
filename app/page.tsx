@@ -27,6 +27,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickSwitcher from "@/components/QuickSwitcher";
 import TrashPanel, { type TrashedNote } from "@/components/TrashPanel";
 import { extractTags, toPlainText } from "@/lib/markdown";
+import { loadPendingQueue, savePendingQueue, type PendingNote } from "@/lib/pendingQueue";
 
 function snippet(content: string, maxLen = 60): string {
   const text = toPlainText(content);
@@ -92,6 +93,7 @@ export default function Home() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashNotes, setTrashNotes] = useState<TrashedNote[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [pendingNotes, setPendingNotes] = useState<PendingNote[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     message: string;
@@ -131,6 +133,7 @@ export default function Home() {
         if (cancelled) return;
         setUser(me);
         setCheckingAuth(false);
+        setPendingNotes(loadPendingQueue(me.id));
 
         const [threadsRes, notesRes] = await Promise.all([
           fetch("/api/threads"),
@@ -192,6 +195,11 @@ export default function Home() {
     return map;
   }, [threads]);
 
+  const visiblePendingNotes = useMemo(
+    () => (isSearching ? [] : pendingNotes.filter((p) => p.threadId === activeThreadId)),
+    [pendingNotes, activeThreadId, isSearching]
+  );
+
   const switcherNotes = useMemo(
     () =>
       notes.map((n) => ({
@@ -251,22 +259,87 @@ export default function Home() {
   async function submitNote() {
     const content = draft.trim();
     if (!content || !activeThreadId) return;
+    const threadId = activeThreadId;
     setDraft("");
     setLinkQuery(null);
     try {
       const res = await fetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, threadId: activeThreadId }),
+        body: JSON.stringify({ content, threadId }),
       });
       if (!res.ok) throw new Error();
       const note = await res.json();
       setNotes((prev) => [...prev, note]);
     } catch {
-      setDraft(content);
-      showError(CONNECTION_ERROR);
+      // eslint-disable-next-line react-hooks/purity -- only ever reached from a user-triggered submit, never during render
+      queueOfflineNote(content, threadId, Date.now());
     }
   }
+
+  function queueOfflineNote(content: string, threadId: string, createdAt: number) {
+    if (!user) return;
+    const pending: PendingNote = {
+      localId: crypto.randomUUID(),
+      content,
+      threadId,
+      createdAt,
+    };
+    setPendingNotes((prev) => {
+      const next = [...prev, pending];
+      savePendingQueue(user.id, next);
+      return next;
+    });
+    showError("You're offline — this note will send once you're back online.");
+  }
+
+  async function flushPendingQueue(queue: PendingNote[]) {
+    if (!user || queue.length === 0) return;
+    for (const p of queue) {
+      try {
+        const res = await fetch("/api/notes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: p.content, threadId: p.threadId }),
+        });
+        if (!res.ok) throw new Error();
+        const note = await res.json();
+        setNotes((prev) => [...prev, note]);
+        setPendingNotes((prev) => {
+          const next = prev.filter((x) => x.localId !== p.localId);
+          savePendingQueue(user.id, next);
+          return next;
+        });
+      } catch {
+        break;
+      }
+    }
+  }
+
+  function discardPendingNote(localId: string) {
+    if (!user) return;
+    setPendingNotes((prev) => {
+      const next = prev.filter((p) => p.localId !== localId);
+      savePendingQueue(user.id, next);
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    function handleOnline() {
+      flushPendingQueue(pendingNotes);
+    }
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNotes]);
+
+  useEffect(() => {
+    if (pendingNotes.length === 0) return;
+    const timer = setInterval(() => flushPendingQueue(pendingNotes), 20000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNotes]);
 
   async function patchNote(
     id: string,
@@ -1001,6 +1074,26 @@ export default function Home() {
                   )}
                 </div>
                 )}
+              </div>
+            </div>
+          ))}
+          {visiblePendingNotes.map((p) => (
+            <div
+              key={p.localId}
+              className="max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 px-4 py-2.5 opacity-70"
+            >
+              <p className="text-sm whitespace-pre-wrap break-words">{p.content}</p>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[11px] text-neutral-400">Waiting to reconnect…</span>
+                <div className="flex items-center gap-1 -mr-2">
+                  <button
+                    onClick={() => discardPendingNote(p.localId)}
+                    className="p-2.5 text-neutral-300 hover:text-red-500"
+                    title="Discard"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
