@@ -62,22 +62,36 @@ function hasColumn(table: string, column: string): boolean {
   return cols.some((c) => c.name === column);
 }
 
+// Next's build step imports this module from multiple worker processes
+// concurrently, so two workers can both see a column as missing and both
+// try to add it — the loser gets "duplicate column name" from SQLite. The
+// hasColumn() check above is just an optimization to skip the common case;
+// this is what actually makes each migration safe to race.
+function safeAddColumn(alterSql: string) {
+  try {
+    db.exec(alterSql);
+  } catch (err) {
+    if (err instanceof Error && /duplicate column name/i.test(err.message)) return;
+    throw err;
+  }
+}
+
 if (!hasColumn("notes", "thread_id")) {
-  db.exec(`ALTER TABLE notes ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''`);
+  safeAddColumn(`ALTER TABLE notes ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''`);
 }
 if (!hasColumn("threads", "user_id")) {
   // empty string marks a pre-accounts "orphan" thread, claimed by the first
   // user to register so existing notes aren't lost when accounts were added.
-  db.exec(`ALTER TABLE threads ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  safeAddColumn(`ALTER TABLE threads ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
 }
 if (!hasColumn("notes", "deleted_at")) {
-  db.exec(`ALTER TABLE notes ADD COLUMN deleted_at INTEGER`);
+  safeAddColumn(`ALTER TABLE notes ADD COLUMN deleted_at INTEGER`);
 }
 if (!hasColumn("users", "theme")) {
-  db.exec(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
+  safeAddColumn(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
 }
 if (!hasColumn("users", "is_admin")) {
-  db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
+  safeAddColumn(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
   // accounts created before the admin flag existed have none set — grant it
   // to whichever account is earliest, so admin access isn't orphaned.
   const anyAdmin = db.prepare("SELECT id FROM users WHERE is_admin = 1").get();
