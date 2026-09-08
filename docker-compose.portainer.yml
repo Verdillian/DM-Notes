@@ -1,0 +1,28 @@
+# Portainer-ready stack for DM Notes — pulls the pre-built image from Docker
+# Hub instead of building from source, so this file alone is all Portainer
+# needs (paste it into Stacks -> Add stack -> Web editor, or point a Git
+# stack at this file).
+#
+# The backup FTP variables below are optional — set them in Portainer's
+# "Environment variables" section when deploying the stack (they default
+# to empty/off if you skip them), rather than needing a .env file on disk.
+services:
+  dm-notes:
+    image: verdillian/dm-notes:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - dm-notes-data:/app/data
+    environment:
+      NODE_ENV: production
+      BACKUP_FTP_HOST: ${BACKUP_FTP_HOST:-}
+      BACKUP_FTP_USER: ${BACKUP_FTP_USER:-}
+      BACKUP_FTP_PASSWORD: ${BACKUP_FTP_PASSWORD:-}
+      BACKUP_FTP_PORT: ${BACKUP_FTP_PORT:-21}
+      BACKUP_FTP_SECURE: ${BACKUP_FTP_SECURE:-false}
+      BACKUP_FTP_DIR: ${BACKUP_FTP_DIR:-/dm-notes-backups}
+      BACKUP_KEEP_LAST: ${BACKUP_KEEP_LAST:-14}
+    restart: unless-stopped
+
+volumes:
+  dm-notes-data:

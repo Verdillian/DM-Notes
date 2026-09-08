@@ -48,6 +48,25 @@ That builds the image, starts the container, and binds `./data` on the host so y
 
 To ship an update later: `git pull`, then `docker compose up -d --build` again. Schema changes are additive migrations that run automatically on startup — no manual migration step, but see **Backups** below before upgrading anything you'd be upset to lose.
 
+### Pre-built image (Docker Hub / Portainer)
+
+Every push to `main` builds and publishes `verdillian/dm-notes:latest` (amd64 + arm64) to Docker Hub via `.github/workflows/docker-publish.yml` — nobody needs to build the image by hand. That workflow needs two repository secrets set once, under the GitHub repo's **Settings → Secrets and variables → Actions**:
+
+- `DOCKERHUB_USERNAME` — your Docker Hub username
+- `DOCKERHUB_TOKEN` — a Docker Hub access token (Docker Hub → Account Settings → Security → New Access Token; don't use your account password)
+
+With that published, deploying doesn't need this repo checked out at all:
+
+- **Portainer**: Stacks → Add stack → paste the contents of `docker-compose.portainer.yml` (or point a Git-based stack at this repo and that file) → fill in the optional `BACKUP_FTP_*` environment variables in Portainer's UI if you want automated backups → Deploy. It pulls the Hub image and uses a named volume instead of a host path, so it doesn't depend on this repo's folder layout.
+- **Plain Docker**, no repo needed:
+  ```bash
+  docker run -d --name dm-notes --restart unless-stopped \
+    -p 3000:3000 -v dm-notes-data:/app/data \
+    verdillian/dm-notes:latest
+  ```
+
+To upgrade either of those: pull the new image and recreate the container (`docker compose pull && docker compose up -d` for the Portainer/compose path) — the named volume keeps your data across that.
+
 ## Backups
 
 `npm run backup` snapshots the database (a safe copy of the live file, not a raw `cp`) and uploaded images into one `.tar.gz`, then pushes it over FTP to remote storage — so you don't lose everything if the machine running this dies.
