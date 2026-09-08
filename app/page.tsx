@@ -13,7 +13,7 @@ import {
   Settings,
   Send,
   Search,
-  Image as ImageIcon,
+  Paperclip,
   HelpCircle,
   Calendar as CalendarIcon,
   Pencil,
@@ -21,12 +21,17 @@ import {
   Command,
   Trash2,
   Link2,
+  Pin,
+  Bell,
+  CheckSquare,
+  Check,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickSwitcher from "@/components/QuickSwitcher";
 import TrashPanel, { type TrashedNote } from "@/components/TrashPanel";
+import CreateEventDialog from "@/components/CreateEventDialog";
 import { extractTags, toPlainText } from "@/lib/markdown";
 import { loadPendingQueue, savePendingQueue, type PendingNote } from "@/lib/pendingQueue";
 
@@ -49,6 +54,7 @@ type Thread = {
   id: string;
   name: string;
   createdAt: number;
+  pinned: boolean;
 };
 
 type CurrentUser = {
@@ -88,6 +94,11 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
   const [movingNoteId, setMovingNoteId] = useState<string | null>(null);
   const [backlinksOpenId, setBacklinksOpenId] = useState<string | null>(null);
+  const [reminderNote, setReminderNote] = useState<Note | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
 
@@ -426,6 +437,78 @@ export default function Home() {
     }
   }
 
+  function toggleNoteSelected(id: string) {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedNoteIds(new Set());
+    setBulkMoveOpen(false);
+  }
+
+  function bulkDeleteSelected() {
+    const count = selectedNoteIds.size;
+    if (count === 0) return;
+    requestConfirm(
+      `Delete ${count} note${count === 1 ? "" : "s"}? You can restore them from Trash for 30 days.`,
+      confirmBulkDeleteSelected
+    );
+  }
+
+  async function confirmBulkDeleteSelected() {
+    const ids = [...selectedNoteIds];
+    const previous = notes;
+    setBulkBusy(true);
+    setNotes((prev) => prev.filter((n) => !selectedNoteIds.has(n.id)));
+    try {
+      const results = await Promise.all(
+        ids.map((id) => fetch(`/api/notes/${id}`, { method: "DELETE" }))
+      );
+      if (results.some((r) => !r.ok)) throw new Error();
+      exitSelectMode();
+    } catch {
+      setNotes(previous);
+      showError(CONNECTION_ERROR);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkMoveSelectedTo(threadId: string) {
+    const ids = [...selectedNoteIds];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    setBulkMoveOpen(false);
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/notes/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ threadId }),
+          })
+        )
+      );
+      if (results.some((r) => !r.ok)) throw new Error();
+      const updated: Note[] = await Promise.all(results.map((r) => r.json()));
+      setNotes((prev) => {
+        const updatedById = new Map(updated.map((n) => [n.id, n]));
+        return prev.map((n) => updatedById.get(n.id) ?? n);
+      });
+      exitSelectMode();
+    } catch {
+      showError(CONNECTION_ERROR);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function openTrash() {
     setTrashOpen(true);
     setTrashLoading(true);
@@ -527,6 +610,27 @@ export default function Home() {
     }
   }
 
+  async function toggleThreadPinned(t: Thread) {
+    try {
+      const res = await fetch(`/api/threads/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: !t.pinned }),
+      });
+      if (!res.ok) throw new Error();
+      const updated: Thread = await res.json();
+      setThreads((prev) =>
+        prev
+          .map((th) => (th.id === updated.id ? updated : th))
+          .sort((a, b) =>
+            a.pinned === b.pinned ? a.createdAt - b.createdAt : a.pinned ? -1 : 1
+          )
+      );
+    } catch {
+      showError(CONNECTION_ERROR);
+    }
+  }
+
   function deleteThread(id: string) {
     if (threads.length <= 1) return;
     const thread = threadsById.get(id);
@@ -573,7 +677,9 @@ export default function Home() {
     });
   }
 
-  async function uploadImage(file: File): Promise<string | null> {
+  type UploadResult = { url: string; isImage: boolean; name: string; size: number };
+
+  async function uploadFile(file: File): Promise<UploadResult | null> {
     setUploading(true);
     try {
       const form = new FormData();
@@ -584,8 +690,7 @@ export default function Home() {
         showError(data.error ?? "Upload failed");
         return null;
       }
-      const data = await res.json();
-      return data.url as string;
+      return (await res.json()) as UploadResult;
     } catch {
       showError(CONNECTION_ERROR);
       return null;
@@ -594,12 +699,24 @@ export default function Home() {
     }
   }
 
-  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function markdownForUpload(result: UploadResult): string {
+    if (result.isImage) return `![](${result.url}) `;
+    const withName = `${result.url}?name=${encodeURIComponent(result.name)}`;
+    return `[📎 ${result.name} (${formatFileSize(result.size)})](${withName}) `;
+  }
+
+  async function handleAttachFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const url = await uploadImage(file);
-    if (url) insertAtCursor(`![](${url}) `);
+    const result = await uploadFile(file);
+    if (result) insertAtCursor(markdownForUpload(result));
   }
 
   async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -610,8 +727,8 @@ export default function Home() {
     const file = item.getAsFile();
     if (!file) return;
     e.preventDefault();
-    const url = await uploadImage(file);
-    if (url) insertAtCursor(`![](${url}) `);
+    const result = await uploadFile(file);
+    if (result) insertAtCursor(markdownForUpload(result));
   }
 
   function updateLinkQueryFromCaret(value: string, caret: number) {
@@ -786,6 +903,17 @@ export default function Home() {
                   <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
                 </button>
                 <button
+                  onClick={() => toggleThreadPinned(t)}
+                  className={
+                    t.pinned
+                      ? "p-2.5 -m-1 text-gold-500"
+                      : "p-2.5 -m-1 text-neutral-300 hover:text-gold-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  }
+                  title={t.pinned ? "Unpin thread" : "Pin thread to top"}
+                >
+                  <Pin size={13} fill={t.pinned ? "currentColor" : "none"} />
+                </button>
+                <button
                   onClick={() => startRenameThread(t)}
                   className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                   title="Rename thread"
@@ -898,6 +1026,21 @@ export default function Home() {
             >
               <HelpCircle size={18} />
             </button>
+            <button
+              onClick={() => {
+                setSelectMode((v) => !v);
+                setSelectedNoteIds(new Set());
+              }}
+              className={
+                selectMode
+                  ? "p-1.5 rounded-md text-brand-600 bg-brand-100 dark:bg-brand-900"
+                  : "p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+              }
+              title={selectMode ? "Exit select mode" : "Select multiple notes"}
+              aria-label={selectMode ? "Exit select mode" : "Select multiple notes"}
+            >
+              <CheckSquare size={18} />
+            </button>
           </div>
         </header>
 
@@ -959,12 +1102,29 @@ export default function Home() {
             </p>
           )}
           {filteredNotes.map((note) => (
+            <div key={note.id} className="flex items-start gap-2 max-w-2xl self-start w-full">
+              {selectMode && (
+                <button
+                  onClick={() => toggleNoteSelected(note.id)}
+                  className="mt-3 shrink-0"
+                  aria-label={selectedNoteIds.has(note.id) ? "Deselect note" : "Select note"}
+                >
+                  <span
+                    className={
+                      selectedNoteIds.has(note.id)
+                        ? "flex h-5 w-5 items-center justify-center rounded-md bg-brand-600 text-[var(--on-accent)]"
+                        : "flex h-5 w-5 items-center justify-center rounded-md border-2 border-neutral-300 dark:border-neutral-600"
+                    }
+                  >
+                    {selectedNoteIds.has(note.id) && <Check size={13} />}
+                  </span>
+                </button>
+              )}
             <div
-              key={note.id}
               ref={(el) => {
                 noteRefs.current[note.id] = el;
               }}
-              className={`group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border px-4 py-2.5 shadow-[var(--bubble-shadow)] transition-colors ${
+              className={`group relative min-w-0 flex-1 rounded-2xl rounded-tl-sm border px-4 py-2.5 shadow-[var(--bubble-shadow)] transition-colors ${
                 highlightedId === note.id
                   ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                   : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
@@ -1093,6 +1253,13 @@ export default function Home() {
                     <FolderInput size={15} />
                   </button>
                   <button
+                    onClick={() => setReminderNote(note)}
+                    className="p-2.5 text-neutral-300 hover:text-brand-600"
+                    title="Remind me about this"
+                  >
+                    <Bell size={15} />
+                  </button>
+                  <button
                     onClick={() => patchNote(note.id, { starred: !note.starred })}
                     className={
                       note.starred
@@ -1144,6 +1311,7 @@ export default function Home() {
                 )}
               </div>
             </div>
+            </div>
           ))}
           {visiblePendingNotes.map((p) => (
             <div
@@ -1169,6 +1337,52 @@ export default function Home() {
         </main>
 
         <footer className="relative border-t border-neutral-200 dark:border-neutral-800 p-2.5 sm:p-3">
+          {selectMode ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-neutral-500">
+                {selectedNoteIds.size} selected
+              </span>
+              <div className="relative flex items-center gap-2">
+                <button
+                  onClick={() => setBulkMoveOpen((v) => !v)}
+                  disabled={selectedNoteIds.size === 0 || bulkBusy}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-40"
+                >
+                  Move to…
+                </button>
+                {bulkMoveOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setBulkMoveOpen(false)} />
+                    <div className="absolute bottom-full right-0 mb-1 z-50 w-44 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
+                      {threads.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => bulkMoveSelectedTo(t.id)}
+                          className="block w-full text-left px-3 py-2 text-sm truncate hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={bulkDeleteSelected}
+                  disabled={selectedNoteIds.size === 0 || bulkBusy}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={exitSelectMode}
+                  className="rounded-md px-3 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
           {linkQuery && linkSuggestions.length > 0 && (
             <div className="absolute bottom-full left-2.5 right-2.5 sm:left-3 sm:right-3 mb-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
               {linkSuggestions.map((n, i) => (
@@ -1190,8 +1404,8 @@ export default function Home() {
             <input
               ref={imageInputRef}
               type="file"
-              accept="image/*"
-              onChange={handleImageFile}
+              accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.txt,.csv,.json,.md,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+              onChange={handleAttachFile}
               className="hidden"
             />
             <button
@@ -1199,10 +1413,10 @@ export default function Home() {
               onClick={() => imageInputRef.current?.click()}
               disabled={uploading}
               className="flex items-center justify-center rounded-xl border border-neutral-300 dark:border-neutral-700 px-3 py-2.5 sm:py-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-40"
-              title="Attach image"
-              aria-label="Attach image"
+              title="Attach image or file"
+              aria-label="Attach image or file"
             >
-              <ImageIcon size={16} />
+              <Paperclip size={16} />
             </button>
             <textarea
               ref={textareaRef}
@@ -1224,6 +1438,13 @@ export default function Home() {
               <span className="hidden sm:inline">Send</span>
             </button>
           </div>
+          {draft.trim().length > 0 && (
+            <p className="mt-1 text-right text-[11px] text-neutral-400">
+              {draft.trim().split(/\s+/).length} words · {draft.length} characters
+            </p>
+          )}
+            </>
+          )}
         </footer>
       </div>
 
@@ -1262,6 +1483,18 @@ export default function Home() {
           onRestore={restoreTrashedNote}
           onDeleteForever={deleteTrashedNoteForever}
           onClose={() => setTrashOpen(false)}
+        />
+      )}
+
+      {reminderNote && (
+        <CreateEventDialog
+          defaultDay={new Date()}
+          initialSummary={snippet(reminderNote.content, 100)}
+          onClose={() => setReminderNote(null)}
+          onCreated={() => {
+            setReminderNote(null);
+            showError("Reminder created.");
+          }}
         />
       )}
     </div>

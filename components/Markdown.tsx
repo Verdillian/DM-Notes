@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Token, Tokens } from "marked";
 import hljs from "highlight.js";
-import { Copy, Check, X } from "lucide-react";
+import { Copy, Check, X, Paperclip } from "lucide-react";
 import {
   parseTokens,
   toggleTaskItem,
@@ -208,6 +208,19 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
         }
         case "link": {
           const link = tok as Tokens.Link;
+          const isAttachment = link.href.includes("/api/uploads/") && link.text.startsWith("📎 ");
+          if (isAttachment) {
+            return (
+              <a
+                key={key}
+                href={link.href}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:border-brand-400 no-underline"
+              >
+                <Paperclip size={12} className="shrink-0 text-neutral-400" />
+                {link.text.replace(/^📎 /, "")}
+              </a>
+            );
+          }
           return (
             <a
               key={key}

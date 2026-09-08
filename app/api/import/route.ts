@@ -17,7 +17,25 @@ type RawNote = {
   updatedAt?: unknown;
 };
 
-const ALLOWED_IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+const ALLOWED_UPLOAD_EXT = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "pdf",
+  "txt",
+  "csv",
+  "json",
+  "md",
+  "zip",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+]);
 
 function isGzip(buffer: Buffer): boolean {
   return buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
@@ -112,7 +130,7 @@ export async function POST(req: NextRequest) {
       if (extractedUploadsDir) {
         for (const ref of findUploadRefs(content)) {
           const ext = ref.filename.split(".").pop()?.toLowerCase() ?? "";
-          if (!ALLOWED_IMAGE_EXT.has(ext)) continue;
+          if (!ALLOWED_UPLOAD_EXT.has(ext)) continue;
 
           let newFilename = restoredFilenames.get(ref.filename);
           if (!newFilename) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteThread, listThreads, renameThread } from "@/lib/db";
+import { deleteThread, listThreads, renameThread, setThreadPinned } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
 export async function PATCH(
@@ -10,6 +10,13 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   const { id } = await params;
   const body = await req.json();
+
+  if (typeof body.pinned === "boolean") {
+    const thread = setThreadPinned(id, user.id, body.pinned);
+    if (!thread) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json(thread);
+  }
+
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });

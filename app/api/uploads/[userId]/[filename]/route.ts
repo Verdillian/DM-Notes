@@ -9,7 +9,22 @@ const MIME: Record<string, string> = {
   jpeg: "image/jpeg",
   gif: "image/gif",
   webp: "image/webp",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  json: "application/json",
+  md: "text/markdown",
+  zip: "application/zip",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+const FILENAME_RE = new RegExp(`^[0-9a-f-]+\\.(${Object.keys(MIME).join("|")})$`, "i");
 
 export async function GET(
   req: NextRequest,
@@ -22,7 +37,7 @@ export async function GET(
   if (userId !== user.id) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  if (!/^[0-9a-f-]+\.(png|jpe?g|gif|webp)$/i.test(filename)) {
+  if (!FILENAME_RE.test(filename)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
@@ -33,10 +48,18 @@ export async function GET(
 
   const ext = filename.split(".").pop()!.toLowerCase();
   const buffer = fs.readFileSync(filePath);
-  return new NextResponse(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": MIME[ext] ?? "application/octet-stream",
-      "Cache-Control": "private, max-age=31536000, immutable",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": MIME[ext] ?? "application/octet-stream",
+    "Cache-Control": "private, max-age=31536000, immutable",
+  };
+
+  // Non-images are attachments, not inline content — give them a sensible
+  // download name instead of the random storage filename, if one was passed.
+  if (!IMAGE_EXTS.has(ext)) {
+    const originalName = req.nextUrl.searchParams.get("name");
+    const suggested = originalName ? encodeURIComponent(originalName) : filename;
+    headers["Content-Disposition"] = `attachment; filename*=UTF-8''${suggested}`;
+  }
+
+  return new NextResponse(new Uint8Array(buffer), { headers });
 }

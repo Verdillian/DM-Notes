@@ -24,10 +24,12 @@ function fromInputValue(value: string, allDay: boolean): string {
 
 export default function CreateEventDialog({
   defaultDay,
+  initialSummary,
   onClose,
   onCreated,
 }: {
   defaultDay: Date;
+  initialSummary?: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -36,7 +38,7 @@ export default function CreateEventDialog({
   const [loadingCalendars, setLoadingCalendars] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [summary, setSummary] = useState("");
+  const [summary, setSummary] = useState(initialSummary ?? "");
   const [location, setLocation] = useState("");
   const [allDay, setAllDay] = useState(false);
   const [recurrence, setRecurrence] = useState<"" | "daily" | "weekly" | "monthly" | "yearly">("");
@@ -61,14 +63,35 @@ export default function CreateEventDialog({
   }, [onClose]);
 
   useEffect(() => {
-    fetch("/api/caldav/calendars")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: Calendar[]) => {
+    let cancelled = false;
+
+    async function loadCalendars() {
+      try {
+        const res = await fetch("/api/caldav/calendars");
+        if (cancelled) return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setLoadError(
+            data.error === "No calendar connected yet"
+              ? "No calendar connected — add one in Settings first."
+              : (data.error ?? "Couldn't load your calendars — check your connection.")
+          );
+          return;
+        }
+        const data: Calendar[] = await res.json();
         setCalendars(data);
         if (data[0]) setCalendarUrl(data[0].url);
-      })
-      .catch(() => setLoadError("Couldn't load your calendars — check your connection."))
-      .finally(() => setLoadingCalendars(false));
+      } catch {
+        if (!cancelled) setLoadError("Couldn't load your calendars — check your connection.");
+      } finally {
+        if (!cancelled) setLoadingCalendars(false);
+      }
+    }
+
+    loadCalendars();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function handleAllDayToggle(checked: boolean) {

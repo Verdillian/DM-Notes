@@ -1,6 +1,7 @@
 export type UploadRef = { fullMatch: string; userId: string; filename: string };
 
-const UPLOAD_URL_RE = /\/api\/uploads\/([0-9a-fA-F-]{36})\/([0-9a-fA-F-]{36}\.(?:png|jpe?g|gif|webp))/g;
+const UPLOAD_URL_RE =
+  /\/api\/uploads\/([0-9a-fA-F-]{36})\/([0-9a-fA-F-]{36}\.(?:png|jpe?g|gif|webp|pdf|txt|csv|json|md|zip|docx?|xlsx?|pptx?))/g;
 
 /** Finds every /api/uploads/<userId>/<filename> reference in a note's content. */
 export function findUploadRefs(content: string): UploadRef[] {

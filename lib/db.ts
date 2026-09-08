@@ -87,6 +87,9 @@ if (!hasColumn("threads", "user_id")) {
 if (!hasColumn("notes", "deleted_at")) {
   safeAddColumn(`ALTER TABLE notes ADD COLUMN deleted_at INTEGER`);
 }
+if (!hasColumn("threads", "pinned")) {
+  safeAddColumn(`ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+}
 if (!hasColumn("users", "theme")) {
   safeAddColumn(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
 }
@@ -129,6 +132,7 @@ export type Thread = {
   name: string;
   userId: string;
   createdAt: number;
+  pinned: boolean;
 };
 
 type NoteRow = {
@@ -146,6 +150,7 @@ type ThreadRow = {
   name: string;
   user_id: string;
   created_at: number;
+  pinned: number;
 };
 
 type UserRow = {
@@ -170,7 +175,13 @@ function rowToNote(row: NoteRow): Note {
 }
 
 function rowToThread(row: ThreadRow): Thread {
-  return { id: row.id, name: row.name, userId: row.user_id, createdAt: row.created_at };
+  return {
+    id: row.id,
+    name: row.name,
+    userId: row.user_id,
+    createdAt: row.created_at,
+    pinned: !!row.pinned,
+  };
 }
 
 function rowToUser(row: UserRow): UserWithHash {
@@ -296,7 +307,7 @@ export function deleteSession(token: string) {
 
 export function listThreads(userId: string): Thread[] {
   const rows = db
-    .prepare("SELECT * FROM threads WHERE user_id = ? ORDER BY created_at ASC")
+    .prepare("SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, created_at ASC")
     .all(userId) as ThreadRow[];
   return rows.map(rowToThread);
 }
@@ -307,7 +318,7 @@ export function createThread(name: string, userId: string): Thread {
   db.prepare(
     "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, name, userId, now);
-  return { id, name, userId, createdAt: now };
+  return { id, name, userId, createdAt: now, pinned: false };
 }
 
 export function renameThread(id: string, name: string, userId: string): Thread | null {
@@ -317,6 +328,15 @@ export function renameThread(id: string, name: string, userId: string): Thread |
   if (!existing) return null;
   db.prepare("UPDATE threads SET name = ? WHERE id = ?").run(name, id);
   return rowToThread({ ...existing, name });
+}
+
+export function setThreadPinned(id: string, userId: string, pinned: boolean): Thread | null {
+  const existing = db
+    .prepare("SELECT * FROM threads WHERE id = ? AND user_id = ?")
+    .get(id, userId) as ThreadRow | undefined;
+  if (!existing) return null;
+  db.prepare("UPDATE threads SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
+  return rowToThread({ ...existing, pinned: pinned ? 1 : 0 });
 }
 
 export function deleteThread(id: string, userId: string): boolean {
@@ -337,7 +357,7 @@ export function importThread(name: string, userId: string, createdAt: number): T
   db.prepare(
     "INSERT INTO threads (id, name, user_id, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, name, userId, createdAt);
-  return { id, name, userId, createdAt };
+  return { id, name, userId, createdAt, pinned: false };
 }
 
 // ---- notes ----
