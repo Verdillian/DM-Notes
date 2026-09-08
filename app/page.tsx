@@ -413,7 +413,7 @@ export default function Home() {
       setTrashNotes(
         trashed.map((n) => ({
           id: n.id,
-          label: snippet(n.content, 80),
+          content: n.content,
           threadName: threadsById.get(n.threadId)?.name ?? "?",
           deletedAt: n.deletedAt ?? Date.now(),
         }))
@@ -867,8 +867,8 @@ export default function Home() {
             <button
               onClick={() => setHelpOpen(true)}
               className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-              title="Formatting quick reference"
-              aria-label="Formatting quick reference"
+              title="Formatting & shortcuts"
+              aria-label="Formatting & shortcuts"
             >
               <HelpCircle size={18} />
             </button>
@@ -1040,7 +1040,7 @@ export default function Home() {
                     className="p-2.5 text-neutral-300 hover:text-red-500"
                     title="Delete"
                   >
-                    <X size={15} />
+                    <Trash2 size={15} />
                   </button>
 
                   {movingNoteId === note.id && (

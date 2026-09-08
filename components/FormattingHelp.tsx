@@ -19,7 +19,14 @@ const ENTRIES: Entry[] = [
   { label: "Link a note", syntax: "[[ then pick from the list" },
   { label: "Checklist", syntax: "- [ ] task" },
   { label: "Image", syntax: "attach icon, or paste a screenshot" },
+];
+
+const SHORTCUTS: Entry[] = [
+  { label: "Jump to a thread or note", syntax: "⌘K / Ctrl+K" },
+  { label: "Send note / save edit", syntax: "Enter" },
   { label: "New line, same note", syntax: "Shift + Enter" },
+  { label: "Cancel edit / close dialog", syntax: "Esc" },
+  { label: "Rename a thread", syntax: "double-click its name" },
 ];
 
 export default function FormattingHelp({ onClose }: { onClose: () => void }) {
@@ -41,7 +48,7 @@ export default function FormattingHelp({ onClose }: { onClose: () => void }) {
         className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-          <h2 className="text-sm font-semibold">Formatting quick reference</h2>
+          <h2 className="text-sm font-semibold">Formatting &amp; shortcuts</h2>
           <button
             onClick={onClose}
             className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -51,6 +58,19 @@ export default function FormattingHelp({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="px-4 py-2">
+          <p className="pt-2 pb-1 text-xs font-medium uppercase text-neutral-400">Shortcuts</p>
+          {SHORTCUTS.map((e) => (
+            <div
+              key={e.label}
+              className="flex items-center justify-between gap-3 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-0"
+            >
+              <span className="text-sm text-neutral-500 shrink-0">{e.label}</span>
+              <code className="text-xs font-mono text-right rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-1 whitespace-pre-wrap break-words">
+                {e.syntax}
+              </code>
+            </div>
+          ))}
+          <p className="pt-3 pb-1 text-xs font-medium uppercase text-neutral-400">Formatting</p>
           {ENTRIES.map((e) => (
             <div
               key={e.label}
