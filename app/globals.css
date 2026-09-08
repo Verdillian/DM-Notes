@@ -43,6 +43,7 @@
 
   --on-accent: #04140c;
   --active-thread-glow: 0 0 0 1px rgba(36, 193, 126, 0.4), 0 0 18px rgba(36, 193, 126, 0.28);
+  --bubble-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
   --body-font: var(--font-plex-sans);
 }
 
@@ -79,6 +80,7 @@
 
   --on-accent: #ffffff;
   --active-thread-glow: none;
+  --bubble-shadow: 0 1px 2px rgba(33, 31, 26, 0.05), 0 8px 20px rgba(33, 31, 26, 0.06);
   --body-font: var(--font-plex-sans);
 }
 
@@ -115,6 +117,10 @@
 
   --on-accent: #1a1006;
   --active-thread-glow: none;
+  /* Terminal stays flat/bordered on purpose — no floating shadow, that's
+     part of what makes it read as a sharp, hairline-bordered dev tool
+     rather than a soft chat app. */
+  --bubble-shadow: none;
   --body-font: var(--font-plex-mono);
 }
 
@@ -151,6 +157,7 @@
 
   --on-accent: #2a0e1a;
   --active-thread-glow: none;
+  --bubble-shadow: 0 8px 22px rgba(10, 7, 20, 0.45);
   --body-font: var(--font-plex-sans);
 }
 

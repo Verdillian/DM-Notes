@@ -70,7 +70,7 @@ export default function TrashPanel({
             {notes.map((n) => (
               <div
                 key={n.id}
-                className="group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5"
+                className="group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2.5 shadow-[var(--bubble-shadow)]"
               >
                 <Markdown content={n.content} onTagClick={noop} onLinkClick={noop} />
                 <div className="mt-1 flex items-center justify-between">

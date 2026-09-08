@@ -938,7 +938,7 @@ export default function Home() {
               ref={(el) => {
                 noteRefs.current[note.id] = el;
               }}
-              className={`group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border px-4 py-2.5 transition-colors ${
+              className={`group relative max-w-2xl self-start w-full rounded-2xl rounded-tl-sm border px-4 py-2.5 shadow-[var(--bubble-shadow)] transition-colors ${
                 highlightedId === note.id
                   ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
                   : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
