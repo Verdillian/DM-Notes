@@ -361,10 +361,37 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
     }
   }
 
+  const BASE_GAP = 8; // px — matches the old space-y-2, used between any two blocks
+  const EXTRA_PER_BLANK_LINE = 8; // px added per blank line beyond the first
+  const MAX_EXTRA_BLANK_LINES = 4; // cap how far deliberate extra blank lines can push it
+
+  // Markdown normally collapses any number of blank lines into one paragraph
+  // break, but in a chat-style composer someone pressing Enter extra times is
+  // a deliberate "give me more space here" — so unlike everywhere else, the
+  // gap here scales with how many blank lines were actually typed.
+  function extraGapBefore(index: number): number {
+    const prev = tokens[index - 1];
+    if (!prev || prev.type !== "space") return 0;
+    const newlineCount = (prev.raw.match(/\n/g) ?? []).length;
+    const blankLines = Math.max(0, newlineCount - 1);
+    const extraBlankLines = Math.min(Math.max(0, blankLines - 1), MAX_EXTRA_BLANK_LINES);
+    return extraBlankLines * EXTRA_PER_BLANK_LINE;
+  }
+
   return (
     <>
-      <div className="space-y-2 text-sm leading-relaxed">
-        {tokens.map((t, i) => renderBlock(t, i))}
+      <div className="text-sm leading-relaxed">
+        {tokens.map((t, i) => {
+          if (t.type === "space") return null;
+          const rendered = renderBlock(t, i);
+          if (rendered === null) return null;
+          const marginTop = i === 0 ? 0 : BASE_GAP + extraGapBefore(i);
+          return (
+            <div key={i} style={{ marginTop }}>
+              {rendered}
+            </div>
+          );
+        })}
       </div>
       {lightboxSrc && (
         <div
