@@ -9,6 +9,7 @@
 
 :root {
   /* ---- Modernized Green (default) ---- */
+  color-scheme: dark;
   --background: #0d1210;
   --foreground: #edf2ee;
 
@@ -48,6 +49,7 @@
 }
 
 [data-app-theme="paper"] {
+  color-scheme: light;
   --background: #f0ede3;
   --foreground: #211f1a;
 
@@ -85,6 +87,7 @@
 }
 
 [data-app-theme="terminal"] {
+  color-scheme: dark;
   --background: #0b0a08;
   --foreground: #efe9dd;
 
@@ -125,6 +128,7 @@
 }
 
 [data-app-theme="jewel"] {
+  color-scheme: dark;
   --background: #14121b;
   --foreground: #f1eef7;
 
@@ -199,4 +203,35 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Custom scrollbars, theme-reactive via the same tokens as everything
+   else — otherwise Chrome falls back to the chunky light-gray OS default,
+   which looks wrong against every theme here (all but Paper are dark).
+   `scrollbar-color`/`scrollbar-width` cover Firefox and newer Chrome/Safari;
+   the `::-webkit-scrollbar*` pseudo-elements cover older Chromium/Safari
+   that don't support the standard properties yet. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--neutral-600) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--neutral-600);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--neutral-500);
 }
