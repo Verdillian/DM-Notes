@@ -162,7 +162,7 @@ function SortableThread({
       <button
         {...attributes}
         {...listeners}
-        className="p-2.5 -m-1 text-neutral-300 hover:text-neutral-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+        className="p-2.5 -m-1 text-neutral-300 hover:text-neutral-500 sm:hidden sm:group-hover:inline-flex cursor-grab active:cursor-grabbing touch-none"
         title="Drag to reorder"
         aria-label="Drag to reorder"
       >
@@ -171,7 +171,7 @@ function SortableThread({
       <button
         onClick={onSelect}
         onDoubleClick={onStartRename}
-        className="flex-1 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
+        className="flex-1 min-w-0 text-left px-2.5 py-2 sm:py-1.5 text-sm truncate"
       >
         {thread.name}
         <span className="ml-1.5 text-xs text-neutral-400">{count}</span>
@@ -181,7 +181,7 @@ function SortableThread({
         className={
           thread.pinned
             ? "p-2.5 -m-1 text-gold-500"
-            : "p-2.5 -m-1 text-neutral-300 hover:text-gold-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            : "p-2.5 -m-1 text-neutral-300 hover:text-gold-500 sm:hidden sm:group-hover:inline-flex"
         }
         title={thread.pinned ? "Unpin thread" : "Pin thread to top"}
       >
@@ -189,7 +189,7 @@ function SortableThread({
       </button>
       <button
         onClick={onStartRename}
-        className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+        className="p-2.5 -m-1 text-neutral-300 hover:text-brand-600 sm:hidden sm:group-hover:inline-flex"
         title="Rename thread"
       >
         <Pencil size={13} />
@@ -197,7 +197,7 @@ function SortableThread({
       {canDelete && (
         <button
           onClick={onDelete}
-          className="p-2.5 -m-1 mr-1 text-neutral-300 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+          className="p-2.5 -m-1 mr-1 text-neutral-300 hover:text-red-500 sm:hidden sm:group-hover:inline-flex"
           title="Delete thread"
         >
           <X size={14} />
