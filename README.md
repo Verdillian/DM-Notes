@@ -18,6 +18,7 @@ A self-hosted, chat-style note-taking app. Capture notes the way you'd send your
 - **Quick switcher** — press Cmd/Ctrl+K to jump straight to any thread or note by name/content match.
 - **Trash** — deleting a note doesn't erase it immediately; it's recoverable from Trash (sidebar) for 30 days before being purged for good.
 - **Offline draft queue** — if a note fails to send (connection drop, server unreachable), it's kept locally and retried automatically once you're back online, instead of being lost.
+- **Themes** — 4 built-in looks (Settings → Appearance): Modernized Green (default), Ink & Paper, Amber Terminal, and Deep Jewel-tone. Each is a fixed light-or-dark palette, per-account, applied server-side so there's no flash of the wrong theme on load.
 - **Installable (PWA)** — add DM Notes to your phone or desktop home screen like a native app.
 
 ## Getting started

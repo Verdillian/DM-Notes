@@ -218,7 +218,7 @@ export default function CalendarPage() {
             <p className="text-sm text-neutral-500">No calendar connected yet.</p>
             <Link
               href="/settings"
-              className="inline-block rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium"
+              className="inline-block rounded-md bg-brand-600 text-[var(--on-accent)] px-4 py-2 text-sm font-medium"
             >
               Connect a calendar
             </Link>
@@ -280,7 +280,7 @@ export default function CalendarPage() {
                     onClick={() => setSelectedDay(day)}
                     className={`aspect-square rounded-lg flex flex-col items-center justify-start pt-1.5 gap-1 text-sm ${
                       isSelected
-                        ? "bg-brand-600 text-white"
+                        ? "bg-brand-600 text-[var(--on-accent)]"
                         : isToday
                           ? "bg-brand-100 dark:bg-brand-900"
                           : "hover:bg-neutral-100 dark:hover:bg-neutral-900"

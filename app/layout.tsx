@@ -1,6 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, Press_Start_2P } from "next/font/google";
+import { cookies } from "next/headers";
+import { THEME_COOKIE } from "@/lib/auth";
+import { DEFAULT_THEME, isValidTheme, themeMode, THEME_ACCENT } from "@/lib/themes";
 import "./globals.css";
+
+async function resolveTheme() {
+  const cookieStore = await cookies();
+  const rawTheme = cookieStore.get(THEME_COOKIE)?.value;
+  return isValidTheme(rawTheme) ? rawTheme : DEFAULT_THEME;
+}
 
 const plexSans = IBM_Plex_Sans({
   variable: "--font-plex-sans",
@@ -31,14 +40,20 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  themeColor: "#1c6b43",
-};
+export async function generateViewport(): Promise<Viewport> {
+  const theme = await resolveTheme();
+  return { themeColor: THEME_ACCENT[theme] };
+}
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const theme = await resolveTheme();
+  const mode = themeMode(theme);
+
   return (
     <html
       lang="en"
+      data-app-theme={theme}
+      data-mode={mode}
       className={`${plexSans.variable} ${plexMono.variable} ${pressStart.variable} h-full antialiased`}
       suppressHydrationWarning
     >

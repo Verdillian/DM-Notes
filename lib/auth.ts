@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getSession, getUserById, type User } from "./db";
 
 export const SESSION_COOKIE = "session";
+export const THEME_COOKIE = "theme";
 
 // secure requires HTTPS — only turn it on once this is actually deployed
 // behind TLS (a reverse proxy, most likely), or the cookie will silently
@@ -16,6 +17,19 @@ export function sessionCookieOptions(expires: Date) {
     secure: isProduction,
     path: "/",
     expires,
+  };
+}
+
+export function themeCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isProduction,
+    path: "/",
+    // a year is plenty — it's just a rendering hint, the account's real
+    // preference lives in the database and this gets refreshed on every
+    // login/register/theme change anyway.
+    expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
   };
 }
 

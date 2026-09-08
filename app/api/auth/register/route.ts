@@ -11,7 +11,13 @@ import {
   setUserAdmin,
   isRegistrationOpen,
 } from "@/lib/db";
-import { hashPassword, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import {
+  hashPassword,
+  SESSION_COOKIE,
+  THEME_COOKIE,
+  sessionCookieOptions,
+  themeCookieOptions,
+} from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
@@ -74,5 +80,6 @@ export async function POST(req: NextRequest) {
     session.token,
     sessionCookieOptions(new Date(session.expiresAt))
   );
+  res.cookies.set(THEME_COOKIE, user.theme, themeCookieOptions());
   return res;
 }

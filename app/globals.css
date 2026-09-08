@@ -1,55 +1,192 @@
 @import "tailwindcss";
 @import "highlight.js/styles/github-dark.css";
 
+/* The 4 app themes each fix their own light/dark mode (see lib/themes.ts,
+   themeMode()) instead of following the OS preference — so `dark:` here
+   is driven by data-mode, set once server-side in app/layout.tsx from the
+   signed-in user's theme, not by prefers-color-scheme. */
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1f1a;
+  /* ---- Modernized Green (default) ---- */
+  --background: #0d1210;
+  --foreground: #edf2ee;
+
+  --neutral-50: #f8faf9;
+  --neutral-100: #eef2ef;
+  --neutral-200: #dae4dd;
+  --neutral-300: #bbcec0;
+  --neutral-400: #8bab97;
+  --neutral-500: #658b75;
+  --neutral-600: #4a6758;
+  --neutral-700: #34493f;
+  --neutral-800: #23312b;
+  --neutral-900: #16211c;
+  --neutral-950: #0d1210;
+
+  --brand-50: #f0fcf6;
+  --brand-100: #e2faef;
+  --brand-200: #98e6c5;
+  --brand-300: #68e3ae;
+  --brand-400: #4edea1;
+  --brand-500: #30de94;
+  --brand-600: #24c17e;
+  --brand-700: #1a8d5c;
+  --brand-800: #126240;
+  --brand-900: #092f1d;
+  --brand-950: #082115;
+
+  /* the green theme keeps a distinct warm gold for pins, matching the
+     original brand — the other 3 themes just reuse their own accent. */
+  --gold-500: #e0b088;
+  --gold-600: #a68a52;
+
+  --on-accent: #04140c;
+  --active-thread-glow: 0 0 0 1px rgba(36, 193, 126, 0.4), 0 0 18px rgba(36, 193, 126, 0.28);
+  --body-font: var(--font-plex-sans);
+}
+
+[data-app-theme="paper"] {
+  --background: #f0ede3;
+  --foreground: #211f1a;
+
+  --neutral-50: #fbfaf8;
+  --neutral-100: #f4f2ec;
+  --neutral-200: #e8e4d6;
+  --neutral-300: #d3ccb5;
+  --neutral-400: #b2a684;
+  --neutral-500: #908460;
+  --neutral-600: #686049;
+  --neutral-700: #484335;
+  --neutral-800: #302d24;
+  --neutral-900: #201e19;
+  --neutral-950: #141310;
+
+  --brand-50: #f0f3fb;
+  --brand-100: #e3e8f9;
+  --brand-200: #b4bfea;
+  --brand-300: #8296e3;
+  --brand-400: #6e85de;
+  --brand-500: #516edd;
+  --brand-600: #3454d1;
+  --brand-700: #253fa3;
+  --brand-800: #1b2f79;
+  --brand-900: #0b122d;
+  --brand-950: #090e1f;
+
+  --gold-500: var(--brand-500);
+  --gold-600: var(--brand-600);
+
+  --on-accent: #ffffff;
+  --active-thread-glow: none;
+  --body-font: var(--font-plex-sans);
+}
+
+[data-app-theme="terminal"] {
+  --background: #0b0a08;
+  --foreground: #efe9dd;
+
+  --neutral-50: #fbfaf7;
+  --neutral-100: #f5f2eb;
+  --neutral-200: #eae3d5;
+  --neutral-300: #d7cab2;
+  --neutral-400: #b7a47f;
+  --neutral-500: #96825a;
+  --neutral-600: #6c5f45;
+  --neutral-700: #4b4332;
+  --neutral-800: #322d23;
+  --neutral-900: #141210;
+  --neutral-950: #0b0a08;
+
+  --brand-50: #fef6ed;
+  --brand-100: #ffefdd;
+  --brand-200: #fbdbb6;
+  --brand-300: #ffb866;
+  --brand-400: #ffcc91;
+  --brand-500: #ffbe73;
+  --brand-600: #ffab4a;
+  --brand-700: #ff8f0d;
+  --brand-800: #d97400;
+  --brand-900: #3a2000;
+  --brand-950: #291702;
+
+  --gold-500: var(--brand-500);
+  --gold-600: var(--brand-600);
+
+  --on-accent: #1a1006;
+  --active-thread-glow: none;
+  --body-font: var(--font-plex-mono);
+}
+
+[data-app-theme="jewel"] {
+  --background: #14121b;
+  --foreground: #f1eef7;
+
+  --neutral-50: #f9f7fb;
+  --neutral-100: #eeebf5;
+  --neutral-200: #dcd5ea;
+  --neutral-300: #bdb1d7;
+  --neutral-400: #8f7eb9;
+  --neutral-500: #695899;
+  --neutral-600: #4e426e;
+  --neutral-700: #37304d;
+  --neutral-800: #252133;
+  --neutral-900: #241f33;
+  --neutral-950: #14121b;
+
+  --brand-50: #fceff5;
+  --brand-100: #fbe1ed;
+  --brand-200: #f4bdd2;
+  --brand-300: #f075a4;
+  --brand-400: #f6afca;
+  --brand-500: #f591b8;
+  --brand-600: #ef6fa0;
+  --brand-700: #e9387c;
+  --brand-800: #d61861;
+  --brand-900: #32061a;
+  --brand-950: #230613;
+
+  --gold-500: var(--brand-500);
+  --gold-600: var(--brand-600);
+
+  --on-accent: #2a0e1a;
+  --active-thread-glow: none;
+  --body-font: var(--font-plex-sans);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-plex-sans);
+  --font-sans: var(--body-font);
   --font-mono: var(--font-plex-mono);
   --font-display: var(--font-press-start);
 
-  /* Near-neutral gray with just a whisper of Verdillian's green, so it
-     doesn't overwhelm — the saturated green lives in brand-* instead. */
-  --color-neutral-50: #fafaf9;
-  --color-neutral-100: #f0f1ef;
-  --color-neutral-200: #dfe1de;
-  --color-neutral-300: #c3c7c1;
-  --color-neutral-400: #9a9f97;
-  --color-neutral-500: #767d73;
-  --color-neutral-600: #565d54;
-  --color-neutral-700: #3d423b;
-  --color-neutral-800: #292d27;
-  --color-neutral-900: #1c1f1a;
-  --color-neutral-950: #121410;
+  --color-neutral-50: var(--neutral-50);
+  --color-neutral-100: var(--neutral-100);
+  --color-neutral-200: var(--neutral-200);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-400: var(--neutral-400);
+  --color-neutral-500: var(--neutral-500);
+  --color-neutral-600: var(--neutral-600);
+  --color-neutral-700: var(--neutral-700);
+  --color-neutral-800: var(--neutral-800);
+  --color-neutral-900: var(--neutral-900);
+  --color-neutral-950: var(--neutral-950);
 
-  /* Verdillian primary green, used everywhere sky-* used to be. */
-  --color-brand-50: #eaf2ec;
-  --color-brand-100: #d2e6da;
-  --color-brand-200: #a6cdb7;
-  --color-brand-300: #79b394;
-  --color-brand-400: #3a9464;
-  --color-brand-500: #2f8a54;
-  --color-brand-600: #1c6b43;
-  --color-brand-700: #155536;
-  --color-brand-800: #0f4025;
-  --color-brand-900: #0c2c1a;
-  --color-brand-950: #0c130f;
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand-950: var(--brand-950);
 
-  /* warm accent for pins/stars, used where amber-* used to be. */
-  --color-gold-500: #e0b088;
-  --color-gold-600: #a68a52;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #121410;
-    --foreground: #f0f1ef;
-  }
+  --color-gold-500: var(--gold-500);
+  --color-gold-600: var(--gold-600);
 }
 
 body {

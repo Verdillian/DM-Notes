@@ -682,7 +682,7 @@ export default function Home() {
         <p className="text-sm text-neutral-500 text-center">{loadError}</p>
         <button
           onClick={() => setReloadKey((k) => k + 1)}
-          className="rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium"
+          className="rounded-md bg-brand-600 text-[var(--on-accent)] px-4 py-2 text-sm font-medium"
         >
           Retry
         </button>
@@ -747,7 +747,7 @@ export default function Home() {
                 key={t.id}
                 className={`group flex items-center rounded-lg ${
                   activeThreadId === t.id && !isSearching
-                    ? "bg-brand-100 dark:bg-brand-900"
+                    ? "bg-brand-100 dark:bg-brand-900 shadow-[var(--active-thread-glow)]"
                     : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
                 }`}
               >
@@ -885,7 +885,7 @@ export default function Home() {
                 onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
                 className={`text-xs rounded-full px-2.5 py-1 border ${
                   activeTag === tag
-                    ? "bg-brand-600 text-white border-brand-600"
+                    ? "bg-brand-600 text-[var(--on-accent)] border-brand-600"
                     : "border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
                 }`}
               >
@@ -1003,7 +1003,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => submitEditNote(note.id)}
-                      className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-brand-600 text-white hover:bg-brand-700"
+                      className="px-2.5 py-1.5 rounded-md text-xs font-medium bg-brand-600 text-[var(--on-accent)] hover:bg-brand-700"
                     >
                       Save
                     </button>
@@ -1149,7 +1149,7 @@ export default function Home() {
             <button
               onClick={submitNote}
               disabled={!draft.trim()}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 text-white px-3.5 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-40"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 text-[var(--on-accent)] px-3.5 py-2.5 sm:py-2 text-sm font-medium disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={16} />

@@ -3,9 +3,23 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, Upload, LogOut, ShieldCheck, KeyRound } from "lucide-react";
+import { ArrowLeft, Download, Upload, LogOut, ShieldCheck, KeyRound, Check } from "lucide-react";
+import {
+  THEMES,
+  THEME_LABELS,
+  THEME_DESCRIPTIONS,
+  THEME_ACCENT,
+  type Theme,
+} from "@/lib/themes";
 
-type CurrentUser = { id: string; email: string; isAdmin: boolean };
+type CurrentUser = { id: string; email: string; isAdmin: boolean; theme: Theme };
+
+const THEME_BG: Record<Theme, string> = {
+  green: "#0d1210",
+  paper: "#f0ede3",
+  terminal: "#0b0a08",
+  jewel: "#14121b",
+};
 type AdminUser = { id: string; email: string; isAdmin: boolean; createdAt: number };
 
 export default function SettingsPage() {
@@ -20,6 +34,9 @@ export default function SettingsPage() {
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [savingTheme, setSavingTheme] = useState<Theme | null>(null);
+  const [themeError, setThemeError] = useState<string | null>(null);
 
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -170,6 +187,32 @@ export default function SettingsPage() {
       setResetError("Network error — check your connection and try again.");
     } finally {
       setResetSaving(false);
+    }
+  }
+
+  async function handleThemeChange(theme: Theme) {
+    if (!user || theme === user.theme) return;
+    setSavingTheme(theme);
+    setThemeError(null);
+    try {
+      const res = await fetch("/api/account/theme", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme }),
+      });
+      if (!res.ok) throw new Error();
+      const updated: CurrentUser = await res.json();
+      setUser(updated);
+      // instant feedback for this tab — the server already set the cookie
+      // that makes this the real value on the next full page load.
+      // eslint-disable-next-line react-hooks/immutability -- deliberate DOM sync, not a render-time mutation
+      document.documentElement.dataset.appTheme = updated.theme;
+      // eslint-disable-next-line react-hooks/immutability -- deliberate DOM sync, not a render-time mutation
+      document.documentElement.dataset.mode = updated.theme === "paper" ? "light" : "dark";
+    } catch {
+      setThemeError("Couldn't save that — check your connection and try again.");
+    } finally {
+      setSavingTheme(null);
     }
   }
 
@@ -388,11 +431,53 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              className="rounded-md bg-brand-600 text-[var(--on-accent)] px-4 py-2 text-sm font-medium disabled:opacity-40"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
           </form>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide">
+            Appearance
+          </h2>
+          <p className="text-sm text-neutral-500">Pick the color and shape system for the app.</p>
+          {themeError && <p className="text-sm text-red-500">{themeError}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {THEMES.map((t) => {
+              const active = user.theme === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => handleThemeChange(t)}
+                  disabled={savingTheme !== null}
+                  className={`relative flex items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:opacity-60 ${
+                    active
+                      ? "border-brand-500 ring-1 ring-brand-500"
+                      : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+                  }`}
+                >
+                  <span
+                    className="mt-0.5 h-9 w-9 shrink-0 rounded-lg border border-black/10"
+                    style={{
+                      background: THEME_BG[t],
+                      boxShadow: `inset 0 0 0 3px ${THEME_ACCENT[t]}`,
+                    }}
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm font-medium">
+                      {THEME_LABELS[t]}
+                      {active && <Check size={13} className="text-brand-600" />}
+                    </span>
+                    <span className="block text-xs text-neutral-500 mt-0.5">
+                      {THEME_DESCRIPTIONS[t]}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         <section className="space-y-3">
@@ -505,7 +590,7 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={caldavSaving}
-                className="rounded-md bg-brand-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+                className="rounded-md bg-brand-600 text-[var(--on-accent)] px-4 py-2 text-sm font-medium disabled:opacity-40"
               >
                 {caldavSaving ? "Connecting…" : caldavConnected ? "Reconnect" : "Connect"}
               </button>
@@ -583,7 +668,7 @@ export default function SettingsPage() {
                         <button
                           onClick={() => handleResetPassword(u.id)}
                           disabled={resetSaving}
-                          className="rounded-md bg-brand-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+                          className="rounded-md bg-brand-600 text-[var(--on-accent)] px-3 py-1.5 text-xs font-medium disabled:opacity-40"
                         >
                           Set
                         </button>

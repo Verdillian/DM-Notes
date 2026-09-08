@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { randomUUID, randomBytes } from "crypto";
+import { DEFAULT_THEME, isValidTheme, type Theme } from "./themes";
 
 const dataDir = path.join(process.cwd(), "data");
 if (!fs.existsSync(dataDir)) {
@@ -72,6 +73,9 @@ if (!hasColumn("threads", "user_id")) {
 if (!hasColumn("notes", "deleted_at")) {
   db.exec(`ALTER TABLE notes ADD COLUMN deleted_at INTEGER`);
 }
+if (!hasColumn("users", "theme")) {
+  db.exec(`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '${DEFAULT_THEME}'`);
+}
 if (!hasColumn("users", "is_admin")) {
   db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
   // accounts created before the admin flag existed have none set — grant it
@@ -87,7 +91,13 @@ if (!hasColumn("users", "is_admin")) {
   }
 }
 
-export type User = { id: string; email: string; isAdmin: boolean; createdAt: number };
+export type User = {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+  createdAt: number;
+  theme: Theme;
+};
 type UserWithHash = User & { passwordHash: string };
 
 export type Note = {
@@ -130,6 +140,7 @@ type UserRow = {
   password_hash: string;
   is_admin: number;
   created_at: number;
+  theme: string;
 };
 
 function rowToNote(row: NoteRow): Note {
@@ -155,6 +166,7 @@ function rowToUser(row: UserRow): UserWithHash {
     passwordHash: row.password_hash,
     isAdmin: !!row.is_admin,
     createdAt: row.created_at,
+    theme: isValidTheme(row.theme) ? row.theme : DEFAULT_THEME,
   };
 }
 
@@ -166,7 +178,7 @@ export function createUser(email: string, passwordHash: string): User {
   db.prepare(
     "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)"
   ).run(id, email, passwordHash, now);
-  return { id, email, isAdmin: false, createdAt: now };
+  return { id, email, isAdmin: false, createdAt: now, theme: DEFAULT_THEME };
 }
 
 export function setUserAdmin(id: string, isAdmin: boolean) {
@@ -187,13 +199,18 @@ export function getUserWithHashById(id: string): UserWithHash | null {
   return row ? rowToUser(row) : null;
 }
 
+function toPublicUser(row: UserRow): User {
+  const { id, email, isAdmin, createdAt, theme } = rowToUser(row);
+  return { id, email, isAdmin, createdAt, theme };
+}
+
 export function updateUserEmail(id: string, email: string): User | null {
   const existing = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as
     | UserRow
     | undefined;
   if (!existing) return null;
   db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, id);
-  return { id, email, isAdmin: !!existing.is_admin, createdAt: existing.created_at };
+  return toPublicUser({ ...existing, email });
 }
 
 export function updateUserPassword(id: string, passwordHash: string): boolean {
@@ -203,12 +220,21 @@ export function updateUserPassword(id: string, passwordHash: string): boolean {
   return result.changes > 0;
 }
 
+export function updateUserTheme(id: string, theme: Theme): User | null {
+  const existing = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as
+    | UserRow
+    | undefined;
+  if (!existing) return null;
+  db.prepare("UPDATE users SET theme = ? WHERE id = ?").run(theme, id);
+  return toPublicUser({ ...existing, theme });
+}
+
 export function getUserById(id: string): User | null {
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as
     | UserRow
     | undefined;
   if (!row) return null;
-  return { id: row.id, email: row.email, isAdmin: !!row.is_admin, createdAt: row.created_at };
+  return toPublicUser(row);
 }
 
 export function countUsers(): number {
@@ -217,12 +243,7 @@ export function countUsers(): number {
 
 export function listUsers(): User[] {
   const rows = db.prepare("SELECT * FROM users ORDER BY created_at ASC").all() as UserRow[];
-  return rows.map((row) => ({
-    id: row.id,
-    email: row.email,
-    isAdmin: !!row.is_admin,
-    createdAt: row.created_at,
-  }));
+  return rows.map(toPublicUser);
 }
 
 export function claimOrphanThreads(userId: string) {
