@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, RotateCcw, Trash2 } from "lucide-react";
 import Markdown from "@/components/Markdown";
+import Tooltip from "@/components/Tooltip";
 
 export type TrashedNote = {
   id: string;
@@ -66,13 +67,15 @@ export default function TrashPanel({
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
           <h2 className="text-sm font-semibold">Trash</h2>
-          <button
-            onClick={onClose}
-            className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+          <Tooltip label="Close">
+            <button
+              onClick={onClose}
+              className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex gap-1 px-3 sm:px-4 pt-3 shrink-0">
@@ -115,20 +118,22 @@ export default function TrashPanel({
                     <div className="mt-1 flex items-center justify-between">
                       <span className="text-[11px] text-brand-600">{n.threadName}</span>
                       <div className="flex items-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity -mr-2">
-                        <button
-                          onClick={() => onRestore(n.id)}
-                          className="p-2.5 text-neutral-300 hover:text-brand-600"
-                          title="Restore"
-                        >
-                          <RotateCcw size={15} />
-                        </button>
-                        <button
-                          onClick={() => onDeleteForever(n.id)}
-                          className="p-2.5 text-neutral-300 hover:text-red-500"
-                          title="Delete forever"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <Tooltip label="Restore">
+                          <button
+                            onClick={() => onRestore(n.id)}
+                            className="p-2.5 text-neutral-300 hover:text-brand-600"
+                          >
+                            <RotateCcw size={15} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Delete forever">
+                          <button
+                            onClick={() => onDeleteForever(n.id)}
+                            className="p-2.5 text-neutral-300 hover:text-red-500"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </Tooltip>
                       </div>
                     </div>
                   </div>
@@ -164,20 +169,22 @@ export default function TrashPanel({
                         {formatDate(t.deletedAt)}
                       </p>
                     </div>
-                    <button
-                      onClick={() => onRestoreThread(t.id)}
-                      className="p-2 shrink-0 text-neutral-300 hover:text-brand-600"
-                      title="Restore"
-                    >
-                      <RotateCcw size={15} />
-                    </button>
-                    <button
-                      onClick={() => onDeleteThreadForever(t.id)}
-                      className="p-2 shrink-0 text-neutral-300 hover:text-red-500"
-                      title="Delete forever"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <Tooltip label="Restore">
+                      <button
+                        onClick={() => onRestoreThread(t.id)}
+                        className="p-2 shrink-0 text-neutral-300 hover:text-brand-600"
+                      >
+                        <RotateCcw size={15} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Delete forever">
+                      <button
+                        onClick={() => onDeleteThreadForever(t.id)}
+                        className="p-2 shrink-0 text-neutral-300 hover:text-red-500"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </Tooltip>
                   </div>
                 ))}
               </div>

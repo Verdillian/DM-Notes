@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import Tooltip from "@/components/Tooltip";
 
 type Calendar = { url: string; name: string };
 
@@ -158,13 +159,15 @@ export default function CreateEventDialog({
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
           <h2 className="text-sm font-semibold">New event</h2>
-          <button
-            onClick={onClose}
-            className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+          <Tooltip label="Close">
+            <button
+              onClick={onClose}
+              className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="px-4 py-4 space-y-3">

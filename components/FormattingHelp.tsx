@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import Tooltip from "@/components/Tooltip";
 
 type Entry = { label: string; syntax: string };
 
@@ -56,13 +57,15 @@ export default function FormattingHelp({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
           <h2 className="text-sm font-semibold">Formatting &amp; shortcuts</h2>
-          <button
-            onClick={onClose}
-            className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+          <Tooltip label="Close">
+            <button
+              onClick={onClose}
+              className="p-2 -m-1 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
         <div className="px-4 py-2">
           <p className="pt-2 pb-1 text-xs font-medium uppercase text-neutral-400">Shortcuts</p>

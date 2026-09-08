@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Token, Tokens } from "marked";
 import hljs from "highlight.js";
 import { Copy, Check, X, Paperclip } from "lucide-react";
+import Tooltip from "@/components/Tooltip";
 import {
   parseTokens,
   toggleTaskItem,
@@ -59,13 +60,14 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     <div className="my-1 rounded-lg overflow-hidden border border-neutral-800 bg-[#0d1117]">
       <div className="flex items-center justify-between px-3 py-1.5 text-xs text-neutral-400 bg-black/30">
         <span>{lang || "text"}</span>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 p-1.5 -m-1.5 hover:text-white"
-          title="Copy code"
-        >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
-        </button>
+        <Tooltip label={copied ? "Copied!" : "Copy code"}>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 p-1.5 -m-1.5 hover:text-white"
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+          </button>
+        </Tooltip>
       </div>
       <pre className="overflow-x-auto p-3 text-sm">
         <code className="font-mono hljs" dangerouslySetInnerHTML={{ __html: html }} />
@@ -433,13 +435,15 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
           onClick={() => setLightboxSrc(null)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 cursor-zoom-out"
         >
-          <button
-            onClick={() => setLightboxSrc(null)}
-            className="absolute top-3 right-3 p-2.5 text-white/70 hover:text-white"
-            aria-label="Close"
-          >
-            <X size={22} />
-          </button>
+          <Tooltip label="Close" className="absolute top-3 right-3">
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="p-2.5 text-white/70 hover:text-white"
+              aria-label="Close"
+            >
+              <X size={22} />
+            </button>
+          </Tooltip>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={lightboxSrc}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Download, Upload, LogOut, ShieldCheck, KeyRound, Check } from "lucide-react";
+import Tooltip from "@/components/Tooltip";
 import {
   THEMES,
   THEME_LABELS,
@@ -353,13 +354,15 @@ export default function SettingsPage() {
   return (
     <div className="min-h-dvh bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       <header className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex items-center gap-3">
-        <Link
-          href="/"
-          className="p-1.5 -ml-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-          aria-label="Back to notes"
-        >
-          <ArrowLeft size={18} />
-        </Link>
+        <Tooltip label="Back to notes">
+          <Link
+            href="/"
+            className="p-1.5 -ml-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            aria-label="Back to notes"
+          >
+            <ArrowLeft size={18} />
+          </Link>
+        </Tooltip>
         <h1 className="text-lg font-semibold flex-1">Settings</h1>
         <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
       </header>

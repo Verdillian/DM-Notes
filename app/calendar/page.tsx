@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, MapPin, Pencil, Settings, Trash2 
 import EditEventDialog from "@/components/EditEventDialog";
 import CreateEventDialog from "@/components/CreateEventDialog";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import Tooltip from "@/components/Tooltip";
 
 type CalendarEvent = {
   uid: string;
@@ -195,22 +196,26 @@ export default function CalendarPage() {
   return (
     <div className="min-h-dvh bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       <header className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex items-center gap-3">
-        <Link
-          href="/"
-          className="p-1.5 -ml-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-          aria-label="Back to notes"
-        >
-          <ArrowLeft size={18} />
-        </Link>
+        <Tooltip label="Back to notes">
+          <Link
+            href="/"
+            className="p-1.5 -ml-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            aria-label="Back to notes"
+          >
+            <ArrowLeft size={18} />
+          </Link>
+        </Tooltip>
         <h1 className="text-lg font-semibold flex-1">Calendar</h1>
         <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
-        <Link
-          href="/settings"
-          className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-          aria-label="Calendar settings"
-        >
-          <Settings size={18} />
-        </Link>
+        <Tooltip label="Calendar settings">
+          <Link
+            href="/settings"
+            className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            aria-label="Calendar settings"
+          >
+            <Settings size={18} />
+          </Link>
+        </Tooltip>
       </header>
 
       <main className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -233,13 +238,15 @@ export default function CalendarPage() {
         {!notConnected && !error && (
           <>
             <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => setMonthStart((m) => addMonths(m, -1))}
-                className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-                aria-label="Previous month"
-              >
-                <ChevronLeft size={18} />
-              </button>
+              <Tooltip label="Previous month">
+                <button
+                  onClick={() => setMonthStart((m) => addMonths(m, -1))}
+                  className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+              </Tooltip>
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold">
                   {monthStart.toLocaleDateString([], { month: "long", year: "numeric" })}
@@ -254,13 +261,15 @@ export default function CalendarPage() {
                   Today
                 </button>
               </div>
-              <button
-                onClick={() => setMonthStart((m) => addMonths(m, 1))}
-                className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-                aria-label="Next month"
-              >
-                <ChevronRight size={18} />
-              </button>
+              <Tooltip label="Next month">
+                <button
+                  onClick={() => setMonthStart((m) => addMonths(m, 1))}
+                  className="p-2.5 -m-1 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                  aria-label="Next month"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </Tooltip>
             </div>
 
             <div className="grid grid-cols-7 text-center text-[11px] font-medium text-neutral-400 mb-1">
@@ -355,23 +364,27 @@ export default function CalendarPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                      <button
-                        onClick={() => setEditingEvent(event)}
-                        className="p-2 -m-1 text-neutral-300 hover:text-brand-600"
-                        aria-label="Edit event"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDeleteError(null);
-                          setDeletingEvent(event);
-                        }}
-                        className="p-2 -m-1 text-neutral-300 hover:text-red-500"
-                        aria-label="Delete event"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <Tooltip label="Edit event">
+                        <button
+                          onClick={() => setEditingEvent(event)}
+                          className="p-2 -m-1 text-neutral-300 hover:text-brand-600"
+                          aria-label="Edit event"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Delete event">
+                        <button
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeletingEvent(event);
+                          }}
+                          className="p-2 -m-1 text-neutral-300 hover:text-red-500"
+                          aria-label="Delete event"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </Tooltip>
                     </div>
                   </div>
                 ))}
