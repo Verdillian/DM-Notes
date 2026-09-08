@@ -19,6 +19,18 @@ export type HighlightToken = {
   text: string;
   tokens: Token[];
 };
+export type SuperscriptToken = {
+  type: "superscript";
+  raw: string;
+  text: string;
+  tokens: Token[];
+};
+export type SubscriptToken = {
+  type: "subscript";
+  raw: string;
+  text: string;
+  tokens: Token[];
+};
 
 const marked = new Marked({ gfm: true, breaks: true });
 
@@ -75,6 +87,50 @@ marked.use({
             text: match[1],
             tokens: this.lexer.inlineTokens(match[1]),
           } as HighlightToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      name: "superscript",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("^");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(this: TokenizerThis, src: string) {
+        const match = /^\^([^\^\n]+?)\^/.exec(src);
+        if (match) {
+          return {
+            type: "superscript",
+            raw: match[0],
+            text: match[1],
+            tokens: this.lexer.inlineTokens(match[1]),
+          } as SuperscriptToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      // single tilde — deliberately requires a non-tilde character right
+      // after the opening delimiter, so it never eats the first ~ of a
+      // ~~strikethrough~~ pair (marked's built-in del tokenizer still gets
+      // first crack at those since this simply won't match there).
+      name: "subscript",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("~");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(this: TokenizerThis, src: string) {
+        const match = /^~([^~\n]+?)~/.exec(src);
+        if (match) {
+          return {
+            type: "subscript",
+            raw: match[0],
+            text: match[1],
+            tokens: this.lexer.inlineTokens(match[1]),
+          } as SubscriptToken;
         }
         return undefined;
       },
@@ -153,6 +209,10 @@ function inlineToPlainText(tokens: Token[] | undefined): string {
           return inlineToPlainText((tok as unknown as UnderlineToken).tokens);
         case "highlight":
           return inlineToPlainText((tok as unknown as HighlightToken).tokens);
+        case "superscript":
+          return inlineToPlainText((tok as unknown as SuperscriptToken).tokens);
+        case "subscript":
+          return inlineToPlainText((tok as unknown as SubscriptToken).tokens);
         default:
           return "";
       }

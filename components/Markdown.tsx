@@ -11,6 +11,8 @@ import {
   type WikilinkToken,
   type UnderlineToken,
   type HighlightToken,
+  type SuperscriptToken,
+  type SubscriptToken,
 } from "@/lib/markdown";
 
 type Props = {
@@ -144,6 +146,18 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
             <mark key={key} className="bg-gold-500/30 text-inherit rounded px-0.5">
               {renderInline((tok as unknown as HighlightToken).tokens, `${key}-`)}
             </mark>
+          );
+        case "superscript":
+          return (
+            <sup key={key}>
+              {renderInline((tok as unknown as SuperscriptToken).tokens, `${key}-`)}
+            </sup>
+          );
+        case "subscript":
+          return (
+            <sub key={key}>
+              {renderInline((tok as unknown as SubscriptToken).tokens, `${key}-`)}
+            </sub>
           );
         case "codespan":
           return (

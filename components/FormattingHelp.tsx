@@ -11,6 +11,8 @@ const ENTRIES: Entry[] = [
   { label: "Strikethrough", syntax: "~~text~~" },
   { label: "Underline", syntax: "++text++" },
   { label: "Highlight", syntax: "==text==" },
+  { label: "Superscript", syntax: "^text^" },
+  { label: "Subscript", syntax: "~text~" },
   { label: "Inline code", syntax: "`text`" },
   { label: "Code block", syntax: "```lang\ncode\n```" },
   { label: "Heading", syntax: "# text" },
