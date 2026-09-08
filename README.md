@@ -32,16 +32,34 @@ Open [http://localhost:3000](http://localhost:3000), register an account, and yo
 
 Data is stored locally in a SQLite database and an uploads folder under `./data`, which is gitignored.
 
+## Deploying (Docker)
+
+This is the intended way to run DM Notes for real, e.g. on a home server behind a Cloudflare Tunnel or reverse proxy:
+
+```bash
+git clone https://github.com/Verdillian/DM-Notes.git
+cd DM-Notes
+cp .env.example .env   # do this even if you leave the backup fields blank —
+                        # docker-compose.yml expects .env to exist
+docker compose up -d --build
+```
+
+That builds the image, starts the container, and binds `./data` on the host so your notes and uploads survive rebuilds/upgrades. Point your reverse proxy or tunnel at `http://<this-machine>:3000`, then open the site and register — the **first account created is the admin** and can open/close registration to others from Settings.
+
+To ship an update later: `git pull`, then `docker compose up -d --build` again. Schema changes are additive migrations that run automatically on startup — no manual migration step, but see **Backups** below before upgrading anything you'd be upset to lose.
+
 ## Backups
 
 `npm run backup` snapshots the database (a safe copy of the live file, not a raw `cp`) and uploaded images into one `.tar.gz`, then pushes it over FTP to remote storage — so you don't lose everything if the machine running this dies.
 
-1. Copy `.env.example` to `.env` and fill in `BACKUP_FTP_HOST`, `BACKUP_FTP_USER`, `BACKUP_FTP_PASSWORD` (any FTP-accessible storage works — e.g. space on a shared web hosting plan you already pay for).
-2. Run `npm run backup` once to confirm it connects and uploads successfully.
-3. Schedule it, e.g. nightly via cron:
+1. Fill in `BACKUP_FTP_HOST`, `BACKUP_FTP_USER`, `BACKUP_FTP_PASSWORD` in `.env` (any FTP-accessible storage works — e.g. space on a shared web hosting plan you already pay for).
+2. Restart the container so it picks up the new `.env` values: `docker compose up -d`.
+3. Run it once to confirm it connects and uploads successfully: `docker compose exec dm-notes npm run backup`.
+4. Schedule it on the host, e.g. nightly via cron:
    ```
-   0 3 * * * cd /path/to/dm-notes && npm run backup >> backup.log 2>&1
+   0 3 * * * cd /path/to/DM-Notes && docker compose exec -T dm-notes npm run backup >> backup.log 2>&1
    ```
+   (Running outside Docker instead? Use plain `npm run backup` in that cron line.)
 
 Old backups are pruned automatically, keeping the most recent 14 by default (`BACKUP_KEEP_LAST`). If your FTP host supports FTPS, set `BACKUP_FTP_SECURE=true` so credentials and data aren't sent in the clear.
 
