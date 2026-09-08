@@ -64,6 +64,11 @@ function formatTime(ts: number): string {
   return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} · ${time}`;
 }
 
+function isCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -655,7 +660,7 @@ export default function Home() {
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isCoarsePointer()) {
       e.preventDefault();
       submitNote();
     }
@@ -971,7 +976,7 @@ export default function Home() {
                     if (e.key === "Escape") {
                       e.preventDefault();
                       cancelEditNote();
-                    } else if (e.key === "Enter" && !e.shiftKey) {
+                    } else if (e.key === "Enter" && !e.shiftKey && !isCoarsePointer()) {
                       e.preventDefault();
                       submitEditNote(note.id);
                     }

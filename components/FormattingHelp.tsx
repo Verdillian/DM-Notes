@@ -23,7 +23,7 @@ const ENTRIES: Entry[] = [
 
 const SHORTCUTS: Entry[] = [
   { label: "Jump to a thread or note", syntax: "⌘K / Ctrl+K" },
-  { label: "Send note / save edit", syntax: "Enter" },
+  { label: "Send note / save edit", syntax: "Enter (or tap Send on mobile)" },
   { label: "New line, same note", syntax: "Shift + Enter" },
   { label: "Cancel edit / close dialog", syntax: "Esc" },
   { label: "Rename a thread", syntax: "double-click its name" },
