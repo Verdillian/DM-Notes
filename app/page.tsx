@@ -432,7 +432,7 @@ export default function Home() {
       const res = await fetch(`/api/notes/${id}/restore`, { method: "POST" });
       if (!res.ok) throw new Error();
       const note: Note = await res.json();
-      setNotes((prev) => [...prev, note]);
+      setNotes((prev) => [...prev, note].sort((a, b) => a.createdAt - b.createdAt));
     } catch {
       setTrashNotes(previous);
       showError(CONNECTION_ERROR);
