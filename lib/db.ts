@@ -500,6 +500,9 @@ export function createWelcomeThread(userId: string): Thread {
     "Text styling — type this:\n\n```\n**bold**, *italic*, ~~strikethrough~~, ++underline++, ==highlight==, x^2^, H~2~O\n```\n\nto get: **bold**, *italic*, ~~strikethrough~~, ++underline++, ==highlight==, x^2^, H~2~O"
   );
   add(
+    "Spoilers — hide text until it's tapped, like Discord:\n\n```\n||spoiler text||\n```\n\nto get: ||tap to reveal||"
+  );
+  add(
     'Code — wrap something in single backticks for inline code, or fence a block with three backticks and a language name for syntax highlighting plus a copy button:\n\n````\n```js\nconsole.log("hi")\n```\n````\n\nRendered:\n\n```js\nfunction hello() {\n  console.log("hi");\n}\n```'
   );
   add(

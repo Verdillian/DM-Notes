@@ -31,6 +31,12 @@ export type SubscriptToken = {
   text: string;
   tokens: Token[];
 };
+export type SpoilerToken = {
+  type: "spoiler";
+  raw: string;
+  text: string;
+  tokens: Token[];
+};
 
 const marked = new Marked({ gfm: true, breaks: true });
 
@@ -87,6 +93,26 @@ marked.use({
             text: match[1],
             tokens: this.lexer.inlineTokens(match[1]),
           } as HighlightToken;
+        }
+        return undefined;
+      },
+    },
+    {
+      name: "spoiler",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("||");
+        return idx === -1 ? undefined : idx;
+      },
+      tokenizer(this: TokenizerThis, src: string) {
+        const match = /^\|\|([^\n]+?)\|\|/.exec(src);
+        if (match) {
+          return {
+            type: "spoiler",
+            raw: match[0],
+            text: match[1],
+            tokens: this.lexer.inlineTokens(match[1]),
+          } as SpoilerToken;
         }
         return undefined;
       },
@@ -224,6 +250,8 @@ function inlineToPlainText(tokens: Token[] | undefined): string {
           return inlineToPlainText((tok as unknown as SuperscriptToken).tokens);
         case "subscript":
           return inlineToPlainText((tok as unknown as SubscriptToken).tokens);
+        case "spoiler":
+          return inlineToPlainText((tok as unknown as SpoilerToken).tokens);
         default:
           return "";
       }

@@ -13,6 +13,7 @@ import {
   type HighlightToken,
   type SuperscriptToken,
   type SubscriptToken,
+  type SpoilerToken,
 } from "@/lib/markdown";
 
 type Props = {
@@ -96,6 +97,21 @@ function Heading({ depth, children }: { depth: number; children: ReactNode }) {
   }
 }
 
+function Spoiler({ children }: { children: ReactNode }) {
+  const [revealed, setRevealed] = useState(false);
+  if (revealed) {
+    return <span className="rounded px-1 bg-neutral-500/15">{children}</span>;
+  }
+  return (
+    <span
+      onClick={() => setRevealed(true)}
+      className="rounded px-1 bg-neutral-600 text-transparent selection:bg-neutral-600 cursor-pointer"
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function Markdown({ content, onTagClick, onLinkClick, onChangeContent }: Props) {
   const tokens = useMemo(() => parseTokens(content), [content]);
   const occCounts = new Map<string, number>();
@@ -158,6 +174,12 @@ export default function Markdown({ content, onTagClick, onLinkClick, onChangeCon
             <sub key={key}>
               {renderInline((tok as unknown as SubscriptToken).tokens, `${key}-`)}
             </sub>
+          );
+        case "spoiler":
+          return (
+            <Spoiler key={key}>
+              {renderInline((tok as unknown as SpoilerToken).tokens, `${key}-`)}
+            </Spoiler>
           );
         case "codespan":
           return (

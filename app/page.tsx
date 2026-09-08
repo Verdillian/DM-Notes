@@ -20,6 +20,7 @@ import {
   FolderInput,
   Command,
   Trash2,
+  Link2,
 } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import FormattingHelp from "@/components/FormattingHelp";
@@ -86,6 +87,7 @@ export default function Home() {
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [movingNoteId, setMovingNoteId] = useState<string | null>(null);
+  const [backlinksOpenId, setBacklinksOpenId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
 
@@ -199,6 +201,22 @@ export default function Home() {
     for (const t of threads) map.set(t.id, t);
     return map;
   }, [threads]);
+
+  const backlinksByNoteId = useMemo(() => {
+    const map = new Map<string, Note[]>();
+    for (const note of notes) {
+      const seenTargets = new Set<string>();
+      for (const match of note.content.matchAll(/\[\[([0-9a-fA-F-]{36})\|[^\]]+\]\]/g)) {
+        const targetId = match[1];
+        if (targetId === note.id || seenTargets.has(targetId)) continue;
+        seenTargets.add(targetId);
+        const list = map.get(targetId);
+        if (list) list.push(note);
+        else map.set(targetId, [note]);
+      }
+    }
+    return map;
+  }, [notes]);
 
   const visiblePendingNotes = useMemo(
     () => (isSearching ? [] : pendingNotes.filter((p) => p.threadId === activeThreadId)),
@@ -995,10 +1013,52 @@ export default function Home() {
                 />
               )}
               <div className="mt-1 flex items-center justify-between">
-                <span className="text-[11px] text-neutral-400">
-                  {editingNoteId === note.id
-                    ? "Enter to save · Shift+Enter for new line · Esc to cancel"
-                    : formatTime(note.createdAt)}
+                <span className="flex items-center gap-2 relative">
+                  <span className="text-[11px] text-neutral-400">
+                    {editingNoteId === note.id
+                      ? "Enter to save · Shift+Enter for new line · Esc to cancel"
+                      : formatTime(note.createdAt)}
+                  </span>
+                  {editingNoteId !== note.id &&
+                    (backlinksByNoteId.get(note.id)?.length ?? 0) > 0 && (
+                      <>
+                        <button
+                          onClick={() =>
+                            setBacklinksOpenId(backlinksOpenId === note.id ? null : note.id)
+                          }
+                          className="flex items-center gap-0.5 text-[11px] text-neutral-400 hover:text-brand-600"
+                          title="Notes linking here"
+                        >
+                          <Link2 size={11} />
+                          {backlinksByNoteId.get(note.id)!.length}
+                        </button>
+                        {backlinksOpenId === note.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setBacklinksOpenId(null)}
+                            />
+                            <div className="absolute left-0 top-full mt-1 z-50 w-56 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
+                              <p className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase text-neutral-400">
+                                Linked from
+                              </p>
+                              {backlinksByNoteId.get(note.id)!.map((n) => (
+                                <button
+                                  key={n.id}
+                                  onClick={() => {
+                                    jumpToNote(n.id);
+                                    setBacklinksOpenId(null);
+                                  }}
+                                  className="block w-full text-left px-3 py-2 text-xs truncate hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                >
+                                  {snippet(n.content, 60)}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
                 </span>
                 {editingNoteId === note.id ? (
                   <div className="flex items-center gap-1 -mr-2">

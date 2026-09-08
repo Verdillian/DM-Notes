@@ -13,6 +13,7 @@ const ENTRIES: Entry[] = [
   { label: "Highlight", syntax: "==text==" },
   { label: "Superscript", syntax: "^text^" },
   { label: "Subscript", syntax: "~text~" },
+  { label: "Spoiler (tap to reveal)", syntax: "||text||" },
   { label: "Inline code", syntax: "`text`" },
   { label: "Code block", syntax: "```lang\ncode\n```" },
   { label: "Heading", syntax: "# text" },
