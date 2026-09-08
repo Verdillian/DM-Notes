@@ -235,3 +235,16 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: var(--neutral-500);
 }
+
+/* iOS Safari auto-zooms the page when a focused form field's font-size is
+   under 16px — every input/textarea/select here uses Tailwind's text-sm
+   (14px) to match the rest of the compact UI. Bumping just the mobile
+   viewport to 16px avoids the zoom without changing desktop sizing; !important
+   is needed since a plain element selector can't outrank the text-sm class. */
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
