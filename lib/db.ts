@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID, randomBytes } from "crypto";
 import { DEFAULT_THEME, isValidTheme, type Theme } from "./themes";
+import { encrypt, decryptStored } from "./crypto";
 
 const dataDir = path.join(process.cwd(), "data");
 if (!fs.existsSync(dataDir)) {
@@ -696,10 +697,25 @@ export function getCaldavConnection(userId: string): CaldavConnection | null {
     .prepare("SELECT * FROM caldav_connections WHERE user_id = ?")
     .get(userId) as CaldavConnectionRow | undefined;
   if (!row) return null;
+
+  const url = decryptStored(row.url);
+  const username = decryptStored(row.username);
+  const password = decryptStored(row.password);
+
+  // self-heal: a connection saved before encryption was added comes back
+  // as legacy plaintext above — re-save it encrypted now that it's decoded.
+  if (url.wasLegacy || username.wasLegacy || password.wasLegacy) {
+    setCaldavConnection(userId, {
+      url: url.text,
+      username: username.text,
+      password: password.text,
+    });
+  }
+
   return {
-    url: row.url,
-    username: row.username,
-    password: row.password,
+    url: url.text,
+    username: username.text,
+    password: password.text,
     createdAt: row.created_at,
   };
 }
@@ -713,7 +729,7 @@ export function setCaldavConnection(
     `INSERT INTO caldav_connections (user_id, url, username, password, created_at)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET url = excluded.url, username = excluded.username, password = excluded.password`
-  ).run(userId, conn.url, conn.username, conn.password, now);
+  ).run(userId, encrypt(conn.url), encrypt(conn.username), encrypt(conn.password), now);
 }
 
 export function deleteCaldavConnection(userId: string) {

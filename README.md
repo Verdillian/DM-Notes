@@ -84,13 +84,18 @@ Old backups are pruned automatically, keeping the most recent 14 by default (`BA
 
 **`npm run backup:manual`** does the same safe snapshot but just saves the `.tar.gz` to a local `./backups` folder — no FTP setup needed. Use it for an on-demand backup you upload yourself, wherever you like.
 
+**Restoring**: extract the archive and put `notes.db`, the `uploads/` folder, and `.encryption-key` back into `./data`, all three. That key file is what CalDAV passwords are encrypted with (see below) — every backup includes it automatically, but if you're restoring by hand, don't leave it behind or saved CalDAV connections will need to be reconnected.
+
 ## Stack
 
 Next.js (App Router) + TypeScript + Tailwind CSS, `better-sqlite3` for storage, `marked` + `highlight.js` for rendering, `node-ical` + `fast-xml-parser` for CalDAV.
 
+## Security notes
+
+- **CalDAV credentials are encrypted at rest** (AES-256-GCM). The key lives in `data/.encryption-key`, generated automatically on first use and separate from `notes.db` — a copy of the database file alone isn't enough to read a stored password back out. Set `CALDAV_ENCRYPTION_KEY` in `.env` (64 hex characters — `openssl rand -hex 32` generates one) if you'd rather manage the key yourself instead of the auto-generated file. This protects against someone getting hold of the database file alone, not a fully compromised host, which could read the key file too — same trust boundary as everything else in a self-hosted deployment.
+
 ## Known limitations
 
-- CalDAV credentials are stored in the SQLite database as plaintext, not encrypted at rest. Fine for a single-user self-hosted instance where the database file itself is the trust boundary; if you deploy this more broadly, add encryption before storing them.
 - Editing or deleting a recurring event affects the whole series — there's no per-occurrence override yet.
 - No password-reset email flow; an admin can reset any user's password from Settings instead.
 

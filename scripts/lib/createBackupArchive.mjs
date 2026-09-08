@@ -11,6 +11,10 @@ import os from "os";
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "notes.db");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+// CalDAV credentials are encrypted at rest with a key stored here, separate
+// from notes.db — it has to travel with every backup, or a restored backup
+// would have an undecryptable (permanently locked out) CalDAV password.
+const KEY_FILE = path.join(DATA_DIR, ".encryption-key");
 
 export async function createBackupArchive(destDir) {
   if (!fs.existsSync(DB_PATH)) {
@@ -31,6 +35,10 @@ export async function createBackupArchive(destDir) {
     if (fs.existsSync(UPLOADS_DIR)) {
       fs.cpSync(UPLOADS_DIR, path.join(stagingDir, "uploads"), { recursive: true });
       entries.push("uploads");
+    }
+    if (fs.existsSync(KEY_FILE)) {
+      fs.cpSync(KEY_FILE, path.join(stagingDir, ".encryption-key"));
+      entries.push(".encryption-key");
     }
 
     const archiveName = `dm-notes-backup-${timestamp}.tar.gz`;
