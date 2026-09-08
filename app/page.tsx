@@ -712,6 +712,9 @@ export default function Home() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
+        <div className="px-3 pt-3 pb-2 border-b border-neutral-200 dark:border-neutral-800">
+          <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
+        </div>
         <div className="px-3 py-3 flex items-center justify-between">
           <span className="text-sm font-semibold text-neutral-500">Threads</span>
           <button

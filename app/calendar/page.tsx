@@ -203,6 +203,7 @@ export default function CalendarPage() {
           <ArrowLeft size={18} />
         </Link>
         <h1 className="text-lg font-semibold flex-1">Calendar</h1>
+        <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
         <Link
           href="/settings"
           className="p-1.5 rounded-md text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900"

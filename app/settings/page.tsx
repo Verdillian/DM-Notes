@@ -360,7 +360,8 @@ export default function SettingsPage() {
         >
           <ArrowLeft size={18} />
         </Link>
-        <h1 className="text-lg font-semibold">Settings</h1>
+        <h1 className="text-lg font-semibold flex-1">Settings</h1>
+        <p className="text-xs font-display text-brand-600 leading-relaxed">DM NOTES</p>
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-8">
